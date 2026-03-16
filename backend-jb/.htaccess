@@ -1,0 +1,15 @@
+Options -Indexes
+RewriteEngine On
+
+# Pasar el header Authorization a PHP
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+<Files "*.sql">
+    Order Allow,Deny
+    Deny from all
+</Files>
+<Files ".env">
+    Order Allow,Deny
+    Deny from all
+</Files>
