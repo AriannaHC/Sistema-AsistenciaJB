@@ -1,32 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Clock, History, LogOut, Menu, X,
-  Bell, User as UserIcon, ChevronRight, Users as UsersIcon
-} from 'lucide-react';
-import { AttendanceRecord, User, View } from './types';
-import Dashboard from './views/Dashboard';
-import AttendanceControl from './views/AttendanceControl';
-import AttendanceHistory from './views/History';
-import UsersManagement from './views/UsersManagement';
-import Auth from './views/Auth';
-import { authApi, attendanceApi, usersApi } from './services/api';
+  LayoutDashboard,
+  Clock,
+  History,
+  LogOut,
+  Menu,
+  X,
+  Bell,
+  User as UserIcon,
+  ChevronRight,
+  Users as UsersIcon,
+  Calendar,
+} from "lucide-react";
+import { AttendanceRecord, User, View } from "./types";
+import Dashboard from "./views/Dashboard";
+import AttendanceControl from "./views/AttendanceControl";
+import AttendanceHistory from "./views/History";
+import UsersManagement from "./views/UsersManagement";
+import Auth from "./views/Auth";
+// 🚀 IMPORTAMOS LAS NUEVAS VISTAS
+import SchedulesManagement from "./views/SchedulesManagement";
+import NotificationsView from "./views/NotificationsView";
+import { authApi, attendanceApi, usersApi } from "./services/api";
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentView, setCurrentView] = useState<View>('attendance');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [currentView, setCurrentView] = useState<View>("attendance");
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Inicialización: verificar sesión activa ──────────────────
+  // 🚀 Estado para el contador de notificaciones
+  const [unreadNotifications, setUnreadNotifications] = useState(3); // Simulación de 3 no leídas
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      } else {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      if (!authApi.isLoggedIn()) { setLoading(false); return; }
+      if (!authApi.isLoggedIn()) {
+        setLoading(false);
+        return;
+      }
       try {
         const user = await authApi.me();
         setCurrentUser(user);
-        setCurrentView(user.role === 'admin' ? 'dashboard' : 'attendance');
+        setCurrentView(user.role === "admin" ? "dashboard" : "attendance");
         await loadData(user);
       } catch {
         authApi.logout();
@@ -41,16 +70,15 @@ const App: React.FC = () => {
     try {
       const [attendanceData, usersData] = await Promise.all([
         attendanceApi.getAll({ limit: 100 }),
-        user.role === 'admin' ? usersApi.getAll() : Promise.resolve([]),
+        user.role === "admin" ? usersApi.getAll() : Promise.resolve([]),
       ]);
       setRecords(attendanceData.records.map(normalizeRecord));
-      if (user.role === 'admin') setUsers(usersData);
+      if (user.role === "admin") setUsers(usersData);
     } catch (e) {
-      console.error('Error cargando datos:', e);
+      console.error("Error cargando datos:", e);
     }
   };
 
-  // Normalizar formato API → formato frontend
   const normalizeRecord = (r: any): AttendanceRecord => ({
     id: r.id,
     userId: r.userId || r.user_id,
@@ -64,7 +92,7 @@ const App: React.FC = () => {
 
   const handleLogin = async (user: User) => {
     setCurrentUser(user);
-    setCurrentView(user.role === 'admin' ? 'dashboard' : 'attendance');
+    setCurrentView(user.role === "admin" ? "dashboard" : "attendance");
     await loadData(user);
   };
 
@@ -75,11 +103,10 @@ const App: React.FC = () => {
     setUsers([]);
   };
 
-  // ── Asistencia ───────────────────────────────────────────────
   const addRecord = async (_record: AttendanceRecord) => {
     try {
       const newRecord = await attendanceApi.checkIn();
-      setRecords(prev => [normalizeRecord(newRecord), ...prev]);
+      setRecords((prev) => [normalizeRecord(newRecord), ...prev]);
     } catch (e: any) {
       alert(e.message);
     }
@@ -88,29 +115,39 @@ const App: React.FC = () => {
   const updateRecord = async (updatedRecord: AttendanceRecord) => {
     try {
       const updated = await attendanceApi.checkOut(updatedRecord.id);
-      setRecords(prev => prev.map(r => r.id === updatedRecord.id ? normalizeRecord(updated) : r));
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === updatedRecord.id ? normalizeRecord(updated) : r,
+        ),
+      );
     } catch (e: any) {
       alert(e.message);
     }
   };
 
-  // ── Usuarios ─────────────────────────────────────────────────
   const handleUpdateUsers = async (newUsers: User[]) => {
     setUsers(newUsers);
-    // Re-cargar desde API para tener datos frescos
     try {
       const fresh = await usersApi.getAll();
       setUsers(fresh);
-    } catch { }
+    } catch {}
   };
 
-  // ── Loading ──────────────────────────────────────────────────
+  const handleNavigation = (view: View) => {
+    setCurrentView(view);
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-jbBlue border-t-jbOrange rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-jbGray font-bold text-sm uppercase tracking-widest">Cargando sistema JB...</p>
+          <p className="text-jbGray font-bold text-sm uppercase tracking-widest">
+            Cargando sistema JB...
+          </p>
         </div>
       </div>
     );
@@ -120,13 +157,17 @@ const App: React.FC = () => {
     return <Auth onLogin={handleLogin} />;
   }
 
-  const NavItem: React.FC<{ view: View; icon: React.ReactNode; label: string }> = ({ view, icon, label }) => (
+  const NavItem: React.FC<{
+    view: View;
+    icon: React.ReactNode;
+    label: string;
+  }> = ({ view, icon, label }) => (
     <button
-      onClick={() => setCurrentView(view)}
+      onClick={() => handleNavigation(view)}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-heading ${
         currentView === view
-          ? 'bg-jbBlue text-white shadow-lg shadow-jbBlue/20'
-          : 'text-jbGray hover:bg-slate-100 hover:text-jbBlue'
+          ? "bg-jbBlue text-white shadow-lg shadow-jbBlue/20"
+          : "text-jbGray hover:bg-slate-100 hover:text-jbBlue"
       }`}
     >
       {icon}
@@ -136,84 +177,187 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans">
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transition-transform duration-300 shadow-sm ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <div className="flex min-h-screen bg-slate-50 font-sans relative">
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── Sidebar ─────────────────────────────────────────── */}
+      <aside
+        className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 shadow-sm
+        transition-transform duration-300
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+      `}
+      >
         <div className="flex flex-col h-full">
-          <div className="p-8 text-center border-b border-slate-50 mb-4">
+          <div className="p-6 text-center border-b border-slate-50 mb-4 relative">
             <h1 className="text-xl font-extrabold text-jbBlue font-heading">
               ASISTENCIA <span className="text-jbOrange">JB</span>
             </h1>
-            <p className="text-[9px] font-black text-jbGray tracking-[0.2em] mt-1">SISTEMA CORPORATIVO</p>
+            <p className="text-[9px] font-black text-jbGray tracking-[0.2em] mt-1">
+              SISTEMA CORPORATIVO
+            </p>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-slate-100 text-jbGray transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
           <nav className="flex-1 px-4 space-y-2">
-            {currentUser.role === 'admin' && (
+            {currentUser.role === "admin" && (
               <>
-                <NavItem view="dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" />
-                <NavItem view="users" icon={<UsersIcon className="w-5 h-5" />} label="Gestión Usuarios" />
+                <NavItem
+                  view="dashboard"
+                  icon={<LayoutDashboard className="w-5 h-5" />}
+                  label="Dashboard"
+                />
+                <NavItem
+                  view="users"
+                  icon={<UsersIcon className="w-5 h-5" />}
+                  label="Gestión Usuarios"
+                />
+                <NavItem
+                  view={"schedules" as View}
+                  icon={<Calendar className="w-5 h-5" />}
+                  label="Gestión Horarios"
+                />
               </>
             )}
-            <NavItem view="attendance" icon={<Clock className="w-5 h-5" />} label="Marcar Asistencia" />
-            <NavItem view="history" icon={<History className="w-5 h-5" />} label="Historial" />
+            <NavItem
+              view="attendance"
+              icon={<Clock className="w-5 h-5" />}
+              label="Marcar Asistencia"
+            />
+            <NavItem
+              view="history"
+              icon={<History className="w-5 h-5" />}
+              label="Historial"
+            />
           </nav>
 
           <div className="p-4 border-t border-slate-100 bg-slate-50/50">
             <button
               onClick={handleLogout}
-              className="w-full mb-6 flex items-center justify-center gap-2 px-3 py-3 bg-jbRed/10 text-jbRed rounded-xl text-xs font-black hover:bg-jbRed hover:text-white transition-all font-heading"
+              className="w-full mb-4 flex items-center justify-center gap-2 px-3 py-3 bg-jbRed/10 text-jbRed rounded-xl text-xs font-black hover:bg-jbRed hover:text-white transition-all font-heading"
             >
               <LogOut className="w-4 h-4" />
               CERRAR SESIÓN
             </button>
             <div className="bg-white p-3 rounded-2xl flex items-center gap-3 border border-slate-100 shadow-sm">
-              <img src={currentUser.avatar} className="w-10 h-10 rounded-full border-2 border-jbBlue/10 p-0.5 bg-slate-50" alt="avatar" />
+              <img
+                src={currentUser.avatar}
+                className="w-10 h-10 rounded-full border-2 border-jbBlue/10 p-0.5 bg-slate-50 flex-shrink-0"
+                alt="avatar"
+              />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate font-heading">{currentUser.name}</p>
-                <p className="text-[10px] text-jbGray font-bold uppercase tracking-tight">{currentUser.area}</p>
+                <p className="text-xs font-bold text-slate-900 truncate font-heading">
+                  {currentUser.name}
+                </p>
+                <p className="text-[10px] text-jbGray font-bold uppercase tracking-tight truncate">
+                  {currentUser.area}
+                </p>
               </div>
             </div>
           </div>
         </div>
       </aside>
 
-      <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
-        <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-slate-200 px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2.5 rounded-xl hover:bg-slate-100 text-jbBlue transition-colors">
-              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+      {/* ── Contenido principal ──────────────────────────────── */}
+      <main
+        className={`
+        flex-1 min-w-0 transition-all duration-300
+        ${sidebarOpen ? "lg:ml-64" : "ml-0"}
+      `}
+      >
+        {/* Header */}
+        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-slate-200 px-4 md:px-8 h-16 md:h-20 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 md:gap-6 min-w-0">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="flex-shrink-0 p-2.5 rounded-xl hover:bg-slate-100 text-jbBlue transition-colors"
+            >
+              {sidebarOpen ? (
+                <X className="w-5 h-5" />
+              ) : (
+                <Menu className="w-5 h-5" />
+              )}
             </button>
-            <h2 className="text-lg font-bold text-jbBlue font-heading uppercase tracking-wide">
-              {currentView === 'dashboard' && 'PANEL DE CONTROL'}
-              {currentView === 'attendance' && 'CONTROL DE ASISTENCIA'}
-              {currentView === 'history' && 'HISTORIAL DE REGISTROS'}
-              {currentView === 'users' && 'GESTIÓN DE COLABORADORES'}
+            <h2 className="text-sm md:text-lg font-bold text-jbBlue font-heading uppercase tracking-wide truncate">
+              {currentView === "dashboard" && "PANEL DE CONTROL"}
+              {currentView === "attendance" && "CONTROL DE ASISTENCIA"}
+              {currentView === "history" && "HISTORIAL"}
+              {currentView === "users" && "GESTIÓN DE COLABORADORES"}
+              {currentView === "schedules" && "GESTIÓN DE HORARIOS"}
+              {currentView === "notifications" && "NOTIFICACIONES"}
             </h2>
           </div>
-          <div className="flex items-center gap-6">
-            <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest font-heading shadow-sm ${currentUser.role === 'admin' ? 'bg-jbBlue/10 text-jbBlue border border-jbBlue/20' : 'bg-jbOrange/10 text-jbOrange border border-jbOrange/20'}`}>
-              PERFIL: {currentUser.role}
+
+          <div className="flex items-center gap-2 md:gap-6 flex-shrink-0">
+            <div
+              className={`hidden sm:block px-3 md:px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest font-heading shadow-sm ${
+                currentUser.role === "admin"
+                  ? "bg-jbBlue/10 text-jbBlue border border-jbBlue/20"
+                  : "bg-jbOrange/10 text-jbOrange border border-jbOrange/20"
+              }`}
+            >
+              {currentUser.role}
             </div>
-            <div className="h-10 w-px bg-slate-200" />
-            <Bell className="w-5 h-5 text-jbGray cursor-pointer hover:text-jbBlue transition-colors" />
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-jbBlue border border-slate-200">
-              <UserIcon className="w-5 h-5" />
+            <div className="hidden md:block h-8 w-px bg-slate-200" />
+
+            {/* 🚀 NUEVO: Campana que navega a la vista de Notificaciones con contador */}
+            <button
+              onClick={() => handleNavigation("notifications" as View)}
+              className={`relative p-2 rounded-full transition-colors ${
+                currentView === "notifications"
+                  ? "bg-jbBlue/10 text-jbBlue"
+                  : "hover:bg-slate-100 text-jbGray hover:text-jbBlue"
+              }`}
+            >
+              <Bell className="w-5 h-5" />
+              {unreadNotifications > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-jbRed text-[9px] font-black text-white border-2 border-white">
+                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                </span>
+              )}
+            </button>
+
+            <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-slate-100 flex items-center justify-center text-jbBlue border border-slate-200">
+              <UserIcon className="w-4 h-4 md:w-5 md:h-5" />
             </div>
           </div>
         </header>
 
-        <div className="p-10 max-w-7xl mx-auto">
-          {currentView === 'dashboard' && currentUser.role === 'admin' && (
+        {/* Contenido de la vista */}
+        <div className="p-4 md:p-6 lg:p-10 max-w-7xl mx-auto">
+          {currentView === "dashboard" && currentUser.role === "admin" && (
             <Dashboard records={records} user={currentUser} />
           )}
-          {currentView === 'users' && currentUser.role === 'admin' && (
+          {currentView === "users" && currentUser.role === "admin" && (
             <UsersManagement users={users} onUpdateUsers={handleUpdateUsers} />
           )}
-          {currentView === 'attendance' && (
-            <AttendanceControl records={records} user={currentUser} onAdd={addRecord} onUpdate={updateRecord} />
+          {currentView === "attendance" && (
+            <AttendanceControl
+              records={records}
+              user={currentUser}
+              onAdd={addRecord}
+              onUpdate={updateRecord}
+            />
           )}
-          {currentView === 'history' && (
+          {currentView === "history" && (
             <AttendanceHistory records={records} user={currentUser} />
           )}
+
+          {/* 🚀 Vistas de Horarios y Notificaciones */}
+          {currentView === "schedules" && currentUser.role === "admin" && (
+            <SchedulesManagement />
+          )}
+          {currentView === "notifications" && <NotificationsView />}
         </div>
       </main>
     </div>
