@@ -1,8 +1,7 @@
-
 export enum AttendanceStatus {
-  PRESENT = 'Presente',
-  LATE = 'Tardanza',
-  ABSENT = 'Falta'
+  PRESENT = "Presente",
+  LATE = "Tardanza",
+  ABSENT = "Falta",
 }
 
 export interface AttendanceRecord {
@@ -21,10 +20,17 @@ export interface User {
   name: string;
   email: string;
   password?: string;
-  role: 'admin' | 'employee';
+  role: "admin" | "employee";
   avatar: string;
   area: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
 }
 
-export type View = 'dashboard' | 'attendance' | 'history' | 'users' | 'settings';
+export type View =
+  | "dashboard"
+  | "attendance"
+  | "history"
+  | "users"
+  | "settings"
+  | "schedules"
+  | "notifications";

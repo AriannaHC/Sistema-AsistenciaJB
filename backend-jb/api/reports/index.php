@@ -1,74 +1,74 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization");
-    http_response_code(200);
-    exit();
-}
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 require_once __DIR__ . '/../../helpers/functions.php';
 require_once __DIR__ . '/../../middleware/auth.php';
 
-$method   = $_SERVER['REQUEST_METHOD'];
-$action   = $_GET['action'] ?? 'dashboard';
+setCorsHeaders();
+setSecurityHeaders();
 
-// Aceptar token por URL (para exportar CSV)
-$tokenFromUrl = $_GET['token'] ?? null;
-if ($tokenFromUrl) {
-    $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $tokenFromUrl;
-}
+$method = $_SERVER['REQUEST_METHOD'];
+$action = $_GET['action'] ?? 'dashboard';
 
 $authUser = requireAuth();
-$db       = getDB();
+$db = getDB();
 
-// Dashboard solo para admin
 if ($action === 'dashboard' && $authUser['role'] !== 'admin') {
     respondError('Acceso denegado. Se requiere rol de administrador.', 403);
 }
 
+// ─── DASHBOARD ───────────────────────────────────────────────
 if ($method === 'GET' && $action === 'dashboard') {
     $today = date('Y-m-d');
 
-    $stmt = $db->query("SELECT COUNT(*) FROM attendance_records WHERE date = '$today' AND check_out IS NULL");
-    $activeNow = (int)$stmt->fetchColumn();
+    // ✅ CORREGIDO: prepared statements en todas las queries
+    $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE date = ? AND check_out IS NULL");
+    $stmt->execute([$today]);
+    $activeNow = (int) $stmt->fetchColumn();
 
-    $stmt = $db->query("SELECT COUNT(*) FROM attendance_records WHERE date = '$today'");
-    $todayCount = (int)$stmt->fetchColumn();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE date = ?");
+    $stmt->execute([$today]);
+    $todayCount = (int) $stmt->fetchColumn();
 
-    $stmt = $db->query("SELECT COUNT(*) FROM attendance_records");
-    $totalRecords = (int)$stmt->fetchColumn();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records");
+    $stmt->execute([]);
+    $totalRecords = (int) $stmt->fetchColumn();
 
-    $stmt = $db->query("SELECT COUNT(*) FROM users WHERE status = 'active'");
-    $totalUsers = (int)$stmt->fetchColumn();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE status = 'active'");
+    $stmt->execute([]);
+    $totalUsers = (int) $stmt->fetchColumn();
 
-    $stmt = $db->query("SELECT * FROM attendance_records ORDER BY check_in DESC LIMIT 6");
+    $stmt = $db->prepare("SELECT * FROM attendance_records ORDER BY check_in DESC LIMIT 6");
+    $stmt->execute([]);
     $recent = array_map('formatRecord', $stmt->fetchAll());
 
-    $stmt = $db->query("SELECT area, COUNT(*) as count FROM users WHERE status = 'active' GROUP BY area ORDER BY count DESC");
+    $stmt = $db->prepare("SELECT area, COUNT(*) as count FROM users WHERE status = 'active' GROUP BY area ORDER BY count DESC");
+    $stmt->execute([]);
     $byArea = $stmt->fetchAll();
 
     respond(true, [
-        'activeNow'     => $activeNow,
-        'todayCount'    => $todayCount,
-        'totalRecords'  => $totalRecords,
-        'totalUsers'    => $totalUsers,
+        'activeNow' => $activeNow,
+        'todayCount' => $todayCount,
+        'totalRecords' => $totalRecords,
+        'totalUsers' => $totalUsers,
         'recentRecords' => $recent,
-        'byArea'        => $byArea,
-        'attendanceRate'=> $totalRecords > 0 ? 100 : 0,
+        'byArea' => $byArea,
+        'attendanceRate' => $totalRecords > 0 ? 100 : 0,
     ]);
 }
 
+// ─── EXPORT CSV ──────────────────────────────────────────────
 if ($method === 'GET' && $action === 'export') {
     $dateFrom = $_GET['dateFrom'] ?? date('Y-m-01');
-    $dateTo   = $_GET['dateTo']   ?? date('Y-m-d');
+    $dateTo = $_GET['dateTo'] ?? date('Y-m-d');
 
- if ($authUser['role'] === 'admin') {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom))
+        $dateFrom = date('Y-m-01');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo))
+        $dateTo = date('Y-m-d');
+
+    if ($authUser['role'] === 'admin') {
         $stmt = $db->prepare("
-            SELECT ar.*, u.area 
+            SELECT ar.*, u.area
             FROM attendance_records ar
             JOIN users u ON u.id = ar.user_id
             WHERE ar.date BETWEEN ? AND ?
@@ -77,7 +77,7 @@ if ($method === 'GET' && $action === 'export') {
         $stmt->execute([$dateFrom, $dateTo]);
     } else {
         $stmt = $db->prepare("
-            SELECT ar.*, u.area 
+            SELECT ar.*, u.area
             FROM attendance_records ar
             JOIN users u ON u.id = ar.user_id
             WHERE ar.date BETWEEN ? AND ? AND ar.user_id = ?
@@ -89,9 +89,11 @@ if ($method === 'GET' && $action === 'export') {
 
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="asistencia_jb_' . date('Y-m-d') . '.csv"');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    header('Pragma: no-cache');
 
     $out = fopen('php://output', 'w');
-    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+    fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
     fputcsv($out, ['ID', 'Colaborador', 'Área', 'Fecha', 'Entrada', 'Salida', 'Estado'], ';');
 
     foreach ($records as $r) {
@@ -110,8 +112,11 @@ if ($method === 'GET' && $action === 'export') {
     exit;
 }
 
+// ─── AREAS ───────────────────────────────────────────────────
 if ($method === 'GET' && $action === 'areas') {
     $month = $_GET['month'] ?? date('Y-m');
+    if (!preg_match('/^\d{4}-\d{2}$/', $month))
+        $month = date('Y-m');
 
     $stmt = $db->prepare("
         SELECT u.area, COUNT(ar.id) as registros, COUNT(DISTINCT ar.user_id) as colaboradores
@@ -125,15 +130,16 @@ if ($method === 'GET' && $action === 'areas') {
     respond(true, $stmt->fetchAll());
 }
 
-function formatRecord(array $r): array {
+function formatRecord(array $r): array
+{
     return [
-        'id'       => $r['id'],
-        'userId'   => $r['user_id'],
+        'id' => $r['id'],
+        'userId' => $r['user_id'],
         'userName' => $r['user_name'],
-        'date'     => $r['date'],
-        'checkIn'  => $r['check_in'],
+        'date' => $r['date'],
+        'checkIn' => $r['check_in'],
         'checkOut' => $r['check_out'] ?? null,
-        'status'   => $r['status'],
+        'status' => $r['status'],
     ];
 }
 

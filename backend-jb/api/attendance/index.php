@@ -1,26 +1,18 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization");
-    http_response_code(200);
-    exit();
-}
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
-
 // ============================================================
-// api/attendance/index.php
+// api/attendance/index.php — VERSIÓN SEGURA
 // ============================================================
 
 require_once __DIR__ . '/../../helpers/functions.php';
 require_once __DIR__ . '/../../middleware/auth.php';
 
-$method   = $_SERVER['REQUEST_METHOD'];
-$action   = $_GET['action'] ?? '';
+setCorsHeaders();
+setSecurityHeaders();
+
+$method = $_SERVER['REQUEST_METHOD'];
+$action = $_GET['action'] ?? '';
 $authUser = requireAuth();
-$db       = getDB();
+$db = getDB();
 
 // ─── MARCAR ENTRADA ──────────────────────────────────────────
 if ($method === 'POST' && $action === 'checkin') {
@@ -35,7 +27,6 @@ if ($method === 'POST' && $action === 'checkin') {
         respondError('Ya tienes una jornada activa hoy. Primero registra tu salida.');
     }
 
-    // Verificar que no haya completado jornada hoy
     $stmt = $db->prepare("
         SELECT id FROM attendance_records 
         WHERE user_id = ? AND date = ? AND check_out IS NOT NULL
@@ -45,7 +36,7 @@ if ($method === 'POST' && $action === 'checkin') {
         respondError('Ya completaste tu jornada hoy. Hasta mañana.');
     }
 
-    $id  = generateUUID();
+    $id = generateUUID();
     $now = date('Y-m-d H:i:s');
 
     $stmt = $db->prepare("
@@ -55,28 +46,37 @@ if ($method === 'POST' && $action === 'checkin') {
     $stmt->execute([$id, $authUser['id'], $authUser['name'], $today, $now]);
 
     respond(true, [
-        'id'       => $id,
-        'userId'   => $authUser['id'],
+        'id' => $id,
+        'userId' => $authUser['id'],
         'userName' => $authUser['name'],
-        'date'     => $today,
-        'checkIn'  => $now,
+        'date' => $today,
+        'checkIn' => $now,
         'checkOut' => null,
-        'status'   => 'Presente',
+        'status' => 'Presente',
     ], 'Entrada registrada correctamente.', 201);
 }
 
 // ─── MARCAR SALIDA ───────────────────────────────────────────
 if ($method === 'PUT' && $action === 'checkout') {
-    $body     = getBody();
-    $recordId = $body['id'] ?? null;
+    $body = getBody();
+    $recordId = trim($body['id'] ?? '');
 
-    if (!$recordId) respondError('ID de registro requerido.');
+    if (!$recordId) {
+        respondError('ID de registro requerido.');
+    }
+
+    // ✅ Validar formato UUID del recordId
+    if (!preg_match('/^[0-9a-f\-]{36}$/', $recordId)) {
+        respondError('ID de registro inválido.', 400);
+    }
 
     $stmt = $db->prepare("SELECT * FROM attendance_records WHERE id = ? AND check_out IS NULL");
     $stmt->execute([$recordId]);
     $record = $stmt->fetch();
 
-    if (!$record) respondError('Registro no encontrado o ya tiene salida registrada.');
+    if (!$record) {
+        respondError('Registro no encontrado o ya tiene salida registrada.');
+    }
 
     if ($authUser['role'] !== 'admin' && $record['user_id'] !== $authUser['id']) {
         respondError('No tienes permiso para modificar este registro.', 403);
@@ -94,10 +94,18 @@ if ($method === 'GET' && $action === 'today') {
     $today = date('Y-m-d');
 
     if ($authUser['role'] === 'admin') {
-        $stmt = $db->prepare("SELECT * FROM attendance_records WHERE date = ? ORDER BY check_in DESC");
+        $stmt = $db->prepare("
+            SELECT * FROM attendance_records 
+            WHERE date = ? 
+            ORDER BY check_in DESC
+        ");
         $stmt->execute([$today]);
     } else {
-        $stmt = $db->prepare("SELECT * FROM attendance_records WHERE date = ? AND user_id = ? ORDER BY check_in DESC");
+        $stmt = $db->prepare("
+            SELECT * FROM attendance_records 
+            WHERE date = ? AND user_id = ? 
+            ORDER BY check_in DESC
+        ");
         $stmt->execute([$today, $authUser['id']]);
     }
 
@@ -106,54 +114,87 @@ if ($method === 'GET' && $action === 'today') {
 
 // ─── LISTAR TODOS (con filtros) ───────────────────────────────
 if ($method === 'GET') {
-    $userId   = $_GET['userId']   ?? null;
-    $dateFrom = $_GET['dateFrom'] ?? null;
-    $dateTo   = $_GET['dateTo']   ?? null;
-    $search   = $_GET['search']   ?? null;
-    $page     = max(1, (int)($_GET['page']  ?? 1));
-    $limit    = min(100, (int)($_GET['limit'] ?? 50));
-    $offset   = ($page - 1) * $limit;
+    // ✅ Sanitizar y validar todos los parámetros de entrada
+    $userId = trim($_GET['userId'] ?? '');
+    $dateFrom = trim($_GET['dateFrom'] ?? '');
+    $dateTo = trim($_GET['dateTo'] ?? '');
+    $search = trim($_GET['search'] ?? '');
+    $page = max(1, (int) ($_GET['page'] ?? 1));
+    $limit = min(100, (int) ($_GET['limit'] ?? 50));
+    $offset = ($page - 1) * $limit;
 
-    $where  = ['1=1'];
+    $where = ['1=1'];
     $params = [];
 
     if ($authUser['role'] !== 'admin') {
-        $where[]  = 'user_id = ?';
+        $where[] = 'user_id = ?';
         $params[] = $authUser['id'];
     } elseif ($userId) {
-        $where[]  = 'user_id = ?';
+        // ✅ Validar formato UUID del userId del filtro
+        if (!preg_match('/^[0-9a-f\-]{36}$/', $userId)) {
+            respondError('ID de usuario inválido.', 400);
+        }
+        $where[] = 'user_id = ?';
         $params[] = $userId;
     }
 
-    if ($search)   { $where[] = 'user_name LIKE ?'; $params[] = "%$search%"; }
-    if ($dateFrom) { $where[] = 'date >= ?';         $params[] = $dateFrom; }
-    if ($dateTo)   { $where[] = 'date <= ?';         $params[] = $dateTo; }
+    if ($search) {
+        // ✅ Sanitizar el campo search antes de usarlo en LIKE
+        $searchSanitizado = sanitizarTexto($search);
+        $where[] = 'user_name LIKE ?';
+        $params[] = "%$searchSanitizado%";
+    }
 
-    $sql  = "SELECT * FROM attendance_records WHERE " . implode(' AND ', $where) . " ORDER BY check_in DESC LIMIT $limit OFFSET $offset";
-    $stmt = $db->prepare($sql);
+    if ($dateFrom) {
+        // ✅ Validar formato de fecha
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) {
+            respondError('Formato de fecha inválido en dateFrom.', 400);
+        }
+        $where[] = 'date >= ?';
+        $params[] = $dateFrom;
+    }
+
+    if ($dateTo) {
+        // ✅ Validar formato de fecha
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) {
+            respondError('Formato de fecha inválido en dateTo.', 400);
+        }
+        $where[] = 'date <= ?';
+        $params[] = $dateTo;
+    }
+
+    // ✅ LIMIT y OFFSET van directo en la query — son enteros validados arriba
+    $whereSQL = implode(' AND ', $where);
+
+    $stmt = $db->prepare("
+        SELECT * FROM attendance_records 
+        WHERE $whereSQL 
+        ORDER BY check_in DESC 
+        LIMIT $limit OFFSET $offset
+    ");
     $stmt->execute($params);
 
-    $sqlCount = "SELECT COUNT(*) FROM attendance_records WHERE " . implode(' AND ', $where);
-    $stmtC    = $db->prepare($sqlCount);
+    $stmtC = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE $whereSQL");
     $stmtC->execute($params);
 
     respond(true, [
         'records' => array_map('formatRecord', $stmt->fetchAll()),
-        'total'   => (int)$stmtC->fetchColumn(),
-        'page'    => $page,
-        'limit'   => $limit,
+        'total' => (int) $stmtC->fetchColumn(),
+        'page' => $page,
+        'limit' => $limit,
     ]);
 }
 
-function formatRecord(array $r): array {
+function formatRecord(array $r): array
+{
     return [
-        'id'       => $r['id'],
-        'userId'   => $r['user_id'],
+        'id' => $r['id'],
+        'userId' => $r['user_id'],
         'userName' => $r['user_name'],
-        'date'     => $r['date'],
-        'checkIn'  => $r['check_in'],
+        'date' => $r['date'],
+        'checkIn' => $r['check_in'],
         'checkOut' => $r['check_out'] ?? null,
-        'status'   => $r['status'],
+        'status' => $r['status'],
         'location' => $r['location'] ?? null,
     ];
 }
