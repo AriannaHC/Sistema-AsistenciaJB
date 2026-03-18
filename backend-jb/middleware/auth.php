@@ -35,12 +35,10 @@ function requireAuth(): array
 
     $token = substr($header, 7);
 
-    // ✅ Limitar longitud del token
     if (strlen($token) > 2048) {
         respondError('Token inválido.', 401);
     }
 
-    // ✅ Validar formato JWT — 3 partes separadas por puntos
     if (!preg_match('/^[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+$/', $token)) {
         respondError('Token inválido.', 401);
     }
@@ -51,21 +49,18 @@ function requireAuth(): array
         respondError('Token inválido o expirado.', 401);
     }
 
-    // ✅ Validar que el id existe y es string
     if (empty($payload['id']) || !is_string($payload['id'])) {
         respondError('Token inválido.', 401);
     }
 
-    // ✅ CORREGIDO: acepta UUID estándar (a1b2c3d4-...) 
-    //    y también IDs legacy tipo u-admin-jb-001
     if (!preg_match('/^[a-zA-Z0-9\-]{5,36}$/', $payload['id'])) {
         respondError('Token inválido.', 401);
     }
 
     $db = getDB();
     $stmt = $db->prepare("
-        SELECT id, name, email, role, area, status, avatar 
-        FROM users 
+        SELECT id, name, email, role, area, status, avatar, schedule_id
+        FROM users
         WHERE id = ? AND status = 'active'
     ");
     $stmt->execute([$payload['id']]);

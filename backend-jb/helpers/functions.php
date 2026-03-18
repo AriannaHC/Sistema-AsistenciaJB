@@ -7,27 +7,23 @@ require_once __DIR__ . '/../config/database.php';
 
 // ------------------------------------------------------------
 // CORS — Lista blanca de dominios permitidos
-// ✅ Solo estos dominios pueden llamar la API
 // ------------------------------------------------------------
 $DOMINIOS_PERMITIDOS = [
-    'https://asistencia.consultoradeasesoriajb.com',  // producción
-    'http://localhost:5173',                           // desarrollo Vite
-    'http://localhost:3000',                           // desarrollo alternativo
-    'http://localhost:4173',                           // Vite preview
+    'https://asistencia.consultoradeasesoriajb.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:4173',
 ];
 
 function setCorsHeaders(): void
 {
     global $DOMINIOS_PERMITIDOS;
-
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
     if (in_array($origin, $DOMINIOS_PERMITIDOS, true)) {
         header("Access-Control-Allow-Origin: $origin");
         header("Access-Control-Allow-Credentials: true");
     } else {
-        // Origen no permitido — no enviamos header Allow-Origin
-        // El navegador bloqueará la petición automáticamente
         if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
             http_response_code(403);
             exit();
@@ -36,7 +32,7 @@ function setCorsHeaders(): void
 
     header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-    header("Access-Control-Max-Age: 86400"); // cachear preflight 24h
+    header("Access-Control-Max-Age: 86400");
 
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(200);
@@ -46,7 +42,6 @@ function setCorsHeaders(): void
 
 // ------------------------------------------------------------
 // Headers de seguridad HTTP
-// ✅ Protección contra XSS, clickjacking y sniffing
 // ------------------------------------------------------------
 function setSecurityHeaders(): void
 {
@@ -128,19 +123,18 @@ function getBody(): array
 }
 
 // ------------------------------------------------------------
-// Generar UUID v4
-// ✅ CORREGIDO: usa random_bytes — criptográficamente seguro
+// Generar UUID v4 — criptográficamente seguro
 // ------------------------------------------------------------
 function generateUUID(): string
 {
     $data = random_bytes(16);
-    $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // versión 4
-    $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // variante RFC 4122
+    $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
+    $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
 }
 
 // ------------------------------------------------------------
-// Validaciones compartidas — usadas en auth y users
+// Validaciones compartidas — auth y users
 // ------------------------------------------------------------
 $AREAS_PERMITIDAS = [
     'MARKETING DIGITAL',
@@ -170,4 +164,35 @@ function validarPassword(string $pass): bool
 function sanitizarTexto(string $texto): string
 {
     return htmlspecialchars(strip_tags(trim($texto)), ENT_QUOTES, 'UTF-8');
+}
+
+// ------------------------------------------------------------
+// ✅ Utilidades de fecha — centralizadas para todos los archivos
+// ------------------------------------------------------------
+
+// Traducir día de la semana al español
+function diaEnEspanol(string $dayEnglish): string
+{
+    $dias = [
+        'Monday' => 'Lunes',
+        'Tuesday' => 'Martes',
+        'Wednesday' => 'Miércoles',
+        'Thursday' => 'Jueves',
+        'Friday' => 'Viernes',
+        'Saturday' => 'Sábado',
+        'Sunday' => 'Domingo',
+    ];
+    return $dias[$dayEnglish] ?? $dayEnglish;
+}
+
+// Validar formato YYYY-MM-DD
+function validarFecha(string $fecha): bool
+{
+    return (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha);
+}
+
+// Validar formato YYYY-MM
+function validarMes(string $mes): bool
+{
+    return (bool) preg_match('/^\d{4}-\d{2}$/', $mes);
 }

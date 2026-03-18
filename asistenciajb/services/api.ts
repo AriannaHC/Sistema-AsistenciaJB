@@ -4,6 +4,9 @@
 // ⚠️  Edita VITE_API_URL en tu .env.local
 // ============================================================
 
+// ✅ IMPORTAMOS EL TIPO SCHEDULE DESDE TYPES.TS
+import { Schedule } from "../types";
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost/backend-jb";
 
 // ─── TOKEN en memoria — más seguro que localStorage ───────────
@@ -140,6 +143,7 @@ export const usersApi = {
     password: string;
     role: string;
     area: string;
+    schedule_id?: string; // 🚀 Agregado para soportar creación con horario
   }) => {
     return apiFetch<any>("/api/users/", {
       method: "POST",
@@ -156,6 +160,7 @@ export const usersApi = {
       role: string;
       area: string;
       status: string;
+      schedule_id: string; // 🚀 Agregado para permitir cambio de horario
     }>,
   ) => {
     return apiFetch<any>(`/api/users/?id=${id}`, {
@@ -166,6 +171,52 @@ export const usersApi = {
 
   deactivate: async (id: string) => {
     return apiFetch<any>(`/api/users/?id=${id}`, { method: "DELETE" });
+  },
+};
+
+// ─── SCHEDULES (NUEVO) ────────────────────────────────────────
+export const schedulesApi = {
+  getAll: async () => {
+    return apiFetch<Schedule[]>("/api/schedules/");
+  },
+
+  getById: async (id: string) => {
+    return apiFetch<Schedule>(`/api/schedules/?id=${id}`);
+  },
+
+  create: async (scheduleData: {
+    name: string;
+    type: "simple" | "bloques";
+    time_in?: string;
+    time_out?: string;
+    tolerance_minutes: number;
+    blocks?: any[];
+  }) => {
+    return apiFetch<Schedule>("/api/schedules/", {
+      method: "POST",
+      body: JSON.stringify(scheduleData),
+    });
+  },
+
+  update: async (
+    id: string,
+    scheduleData: Partial<{
+      name: string;
+      type: "simple" | "bloques";
+      time_in: string;
+      time_out: string;
+      tolerance_minutes: number;
+      blocks: any[];
+    }>,
+  ) => {
+    return apiFetch<Schedule>(`/api/schedules/?id=${id}`, {
+      method: "PUT",
+      body: JSON.stringify(scheduleData),
+    });
+  },
+
+  delete: async (id: string) => {
+    return apiFetch<any>(`/api/schedules/?id=${id}`, { method: "DELETE" });
   },
 };
 

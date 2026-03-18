@@ -11,17 +11,18 @@ import {
   ChevronRight,
   Users as UsersIcon,
   Calendar,
+  CalendarDays,
 } from "lucide-react";
-import { AttendanceRecord, User, View } from "./types";
+import { AttendanceRecord, User, View, Schedule } from "./types";
 import Dashboard from "./views/Dashboard";
 import AttendanceControl from "./views/AttendanceControl";
 import AttendanceHistory from "./views/History";
 import UsersManagement from "./views/UsersManagement";
 import Auth from "./views/Auth";
-// 🚀 IMPORTAMOS LAS NUEVAS VISTAS
 import SchedulesManagement from "./views/SchedulesManagement";
 import NotificationsView from "./views/NotificationsView";
-import { authApi, attendanceApi, usersApi } from "./services/api";
+import { authApi, attendanceApi, usersApi, schedulesApi } from "./services/api";
+import MySchedule from "./views/MySchedule";
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -31,8 +32,11 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🚀 Estado para el contador de notificaciones
-  const [unreadNotifications, setUnreadNotifications] = useState(3); // Simulación de 3 no leídas
+  // ESTADO DE HORARIOS
+  const [allSchedules, setAllSchedules] = useState<Schedule[]>([]);
+
+  // Estado para el contador de notificaciones
+  const [unreadNotifications, setUnreadNotifications] = useState(3);
 
   useEffect(() => {
     const handleResize = () => {
@@ -68,12 +72,35 @@ const App: React.FC = () => {
 
   const loadData = async (user: User) => {
     try {
-      const [attendanceData, usersData] = await Promise.all([
+      const [attendanceData, usersData, schedulesResponse] = await Promise.all([
         attendanceApi.getAll({ limit: 100 }),
         user.role === "admin" ? usersApi.getAll() : Promise.resolve([]),
+        schedulesApi.getAll(),
       ]);
-      setRecords(attendanceData.records.map(normalizeRecord));
-      if (user.role === "admin") setUsers(usersData);
+
+      // ✅ CORREGIDO: el employee recibe un objeto único, el admin recibe un array
+      let schedulesArray: Schedule[] = [];
+      if (Array.isArray(schedulesResponse)) {
+        schedulesArray = schedulesResponse;
+      } else if (schedulesResponse && typeof schedulesResponse === "object") {
+        // Employee — el backend devuelve su horario como objeto único
+        schedulesArray = [schedulesResponse as Schedule];
+      }
+
+      setAllSchedules(schedulesArray);
+
+      setRecords(
+        attendanceData?.records
+          ? attendanceData.records.map(normalizeRecord)
+          : [],
+      );
+
+      if (user.role === "admin") {
+        const usersArray = Array.isArray(usersData)
+          ? usersData
+          : (usersData as any)?.data || [];
+        setUsers(usersArray);
+      }
     } catch (e) {
       console.error("Error cargando datos:", e);
     }
@@ -101,6 +128,7 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setRecords([]);
     setUsers([]);
+    setAllSchedules([]);
   };
 
   const addRecord = async (_record: AttendanceRecord) => {
@@ -129,7 +157,8 @@ const App: React.FC = () => {
     setUsers(newUsers);
     try {
       const fresh = await usersApi.getAll();
-      setUsers(fresh);
+      // 🚀 (as any) aplicado aquí también
+      setUsers(Array.isArray(fresh) ? fresh : (fresh as any)?.data || []);
     } catch {}
   };
 
@@ -239,6 +268,11 @@ const App: React.FC = () => {
               icon={<History className="w-5 h-5" />}
               label="Historial"
             />
+            <NavItem
+              view="my-schedule"
+              icon={<CalendarDays className="w-5 h-5" />}
+              label="Mi Horario"
+            />
           </nav>
 
           <div className="p-4 border-t border-slate-100 bg-slate-50/50">
@@ -275,7 +309,6 @@ const App: React.FC = () => {
         ${sidebarOpen ? "lg:ml-64" : "ml-0"}
       `}
       >
-        {/* Header */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-slate-200 px-4 md:px-8 h-16 md:h-20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 md:gap-6 min-w-0">
             <button
@@ -295,6 +328,7 @@ const App: React.FC = () => {
               {currentView === "users" && "GESTIÓN DE COLABORADORES"}
               {currentView === "schedules" && "GESTIÓN DE HORARIOS"}
               {currentView === "notifications" && "NOTIFICACIONES"}
+              {currentView === "my-schedule" && "MI HORARIO"}
             </h2>
           </div>
 
@@ -310,7 +344,6 @@ const App: React.FC = () => {
             </div>
             <div className="hidden md:block h-8 w-px bg-slate-200" />
 
-            {/* 🚀 NUEVO: Campana que navega a la vista de Notificaciones con contador */}
             <button
               onClick={() => handleNavigation("notifications" as View)}
               className={`relative p-2 rounded-full transition-colors ${
@@ -333,18 +366,27 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Contenido de la vista */}
         <div className="p-4 md:p-6 lg:p-10 max-w-7xl mx-auto">
           {currentView === "dashboard" && currentUser.role === "admin" && (
             <Dashboard records={records} user={currentUser} />
           )}
           {currentView === "users" && currentUser.role === "admin" && (
-            <UsersManagement users={users} onUpdateUsers={handleUpdateUsers} />
+            <UsersManagement
+              users={users}
+              onUpdateUsers={handleUpdateUsers}
+              currentUser={currentUser}
+            />
           )}
           {currentView === "attendance" && (
             <AttendanceControl
               records={records}
               user={currentUser}
+              // 🚀 Extraemos el horario actual cruzando el ID
+              schedule={
+                (Array.isArray(allSchedules) ? allSchedules : []).find(
+                  (s) => s.id === currentUser.schedule_id,
+                ) || null
+              }
               onAdd={addRecord}
               onUpdate={updateRecord}
             />
@@ -352,12 +394,11 @@ const App: React.FC = () => {
           {currentView === "history" && (
             <AttendanceHistory records={records} user={currentUser} />
           )}
-
-          {/* 🚀 Vistas de Horarios y Notificaciones */}
           {currentView === "schedules" && currentUser.role === "admin" && (
             <SchedulesManagement />
           )}
           {currentView === "notifications" && <NotificationsView />}
+          {currentView === "my-schedule" && <MySchedule />}
         </div>
       </main>
     </div>
