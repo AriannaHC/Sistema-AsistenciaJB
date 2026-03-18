@@ -167,11 +167,13 @@ if ($method === 'POST' && $action === 'register') {
     $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
     $avatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 
+    $scheduleId = 'default-schedule-id'; // Asegúrate de que este ID coincida con el que tienes en tu BD
+
     $stmt = $db->prepare("
-        INSERT INTO users (id, name, email, password_hash, role, avatar, area, status)
-        VALUES (?, ?, ?, ?, 'employee', ?, ?, 'active')
+        INSERT INTO users (id, name, email, password_hash, role, avatar, area, schedule_id, status)
+        VALUES (?, ?, ?, ?, 'employee', ?, ?, ?, 'active')
     ");
-    $stmt->execute([$id, $name, $email, $hash, $avatar, $area]);
+    $stmt->execute([$id, $name, $email, $hash, $avatar, $area, $scheduleId]);
 
     // ✅ Al registrar NO devolvemos token — el usuario debe hacer login
     respond(true, [
@@ -182,6 +184,7 @@ if ($method === 'POST' && $action === 'register') {
             'role' => 'employee',
             'avatar' => $avatar,
             'area' => $area,
+            'schedule_id' => $scheduleId,
             'status' => 'active',
         ],
     ], 'Cuenta creada exitosamente. Inicia sesión para continuar.', 201);
