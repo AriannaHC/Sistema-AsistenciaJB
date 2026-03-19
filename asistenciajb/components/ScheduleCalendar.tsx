@@ -1,8 +1,19 @@
-import React, { useRef } from "react";
+import React, { useMemo, useRef, useEffect } from "react";
 import { Schedule } from "../types";
 
 interface Props {
   schedule: Schedule | null;
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  day: number;
+  startHour: number;
+  endHour: number;
+  ingreso: string;
+  salida: string;
+  colorClass: string;
 }
 
 const DIAS_SEMANA = [
@@ -15,26 +26,19 @@ const DIAS_SEMANA = [
   "Domingo",
 ];
 
-const START_HOUR = 6;
+const START_HOUR = 0; // Empezamos a las 0 para tener las 24 horas completas en la tabla
 const END_HOUR = 23;
 const HOUR_HEIGHT = 64;
-const COL_WIDTH = 120;
-const HOUR_COL_W = 64;
 
-const HOURS = Array.from(
-  { length: END_HOUR - START_HOUR + 1 },
-  (_, i) => START_HOUR + i,
-);
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-const GRID_HEIGHT = HOURS.length * HOUR_HEIGHT;
-const GRID_WIDTH = DIAS_SEMANA.length * COL_WIDTH;
-
-const TURNO_COLORS = [
-  "bg-blue-50 border-blue-500 text-blue-900",
-  "bg-purple-50 border-purple-500 text-purple-900",
-  "bg-pink-50 border-pink-400 text-pink-900",
-  "bg-cyan-50 border-cyan-500 text-cyan-900",
-  "bg-orange-50 border-orange-500 text-orange-900",
+// Colores sólidos y modernos basados en el diseño propuesto
+const EVENT_COLORS = [
+  "bg-blue-500 text-white border-blue-600",
+  "bg-purple-500 text-white border-purple-600",
+  "bg-cyan-500 text-white border-cyan-600",
+  "bg-orange-500 text-white border-orange-600",
+  "bg-emerald-500 text-white border-emerald-600",
 ];
 
 const timeToMinutes = (t: string) => {
@@ -44,6 +48,8 @@ const timeToMinutes = (t: string) => {
 };
 
 const formatHourLabel = (hour: number) => {
+  if (hour === 0) return "12 AM";
+  if (hour === 12) return "12 PM";
   const ampm = hour >= 12 ? "PM" : "AM";
   const h = hour % 12 || 12;
   return `${h} ${ampm}`;
@@ -58,233 +64,209 @@ const formatTimeAMPM = (t: string) => {
   return `${h}:${mStr} ${ampm}`;
 };
 
+// 🚀 NUEVO: Función para saber qué día es hoy y pintarlo en el header
+function getTodayIndex(): number {
+  const jsDay = new Date().getDay(); // 0=Domingo
+  return jsDay === 0 ? 6 : jsDay - 1; // Convertimos a nuestro formato 0=Lunes...6=Domingo
+}
+
 const ScheduleCalendar: React.FC<Props> = ({ schedule }) => {
-  const bodyScrollRef = useRef<HTMLDivElement>(null);
-  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const todayIdx = useMemo(() => getTodayIndex(), []);
+
+  // ── 1. Adaptar el Horario a Eventos de Calendario ──
+  const events = useMemo(() => {
+    if (!schedule) return [];
+    const evts: CalendarEvent[] = [];
+
+    DIAS_SEMANA.forEach((dia, dayIdx) => {
+      if (schedule.type === "simple") {
+        if (
+          ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"].includes(dia)
+        ) {
+          if (schedule.time_in && schedule.time_out) {
+            const ingreso = schedule.time_in.substring(0, 5);
+            const salida = schedule.time_out.substring(0, 5);
+            evts.push({
+              id: `${dia}-simple`,
+              title: schedule.name || "Horario Fijo",
+              day: dayIdx,
+              startHour: timeToMinutes(ingreso) / 60,
+              endHour: timeToMinutes(salida) / 60,
+              ingreso,
+              salida,
+              colorClass: EVENT_COLORS[0],
+            });
+          }
+        }
+      } else {
+        const blocksArray =
+          typeof schedule.blocks === "string"
+            ? JSON.parse(schedule.blocks)
+            : schedule.blocks;
+
+        const bloque = blocksArray?.find((b: any) => b.day === dia);
+
+        if (bloque && bloque.turnos) {
+          bloque.turnos.forEach((turno: any, i: number) => {
+            if (turno.ingreso && turno.salida) {
+              evts.push({
+                id: `${dia}-${i}`,
+                title: `Turno ${i + 1}`,
+                day: dayIdx,
+                startHour: timeToMinutes(turno.ingreso) / 60,
+                endHour: timeToMinutes(turno.salida) / 60,
+                ingreso: turno.ingreso,
+                salida: turno.salida,
+                colorClass: EVENT_COLORS[i % EVENT_COLORS.length],
+              });
+            }
+          });
+        }
+      }
+    });
+    return evts;
+  }, [schedule]);
+
+  // Agrupar eventos por día para facilitar el renderizado
+  const eventsByDay = useMemo(() => {
+    const map: Record<number, CalendarEvent[]> = {};
+    for (let d = 0; d < 7; d++) map[d] = [];
+    events.forEach((e) => map[e.day].push(e));
+    return map;
+  }, [events]);
+
+  // Auto-scroll Inteligente al primer turno
+  useEffect(() => {
+    if (scrollRef.current && events.length > 0) {
+      const earliest = Math.min(...events.map((e) => e.startHour));
+      const scrollPos = earliest * HOUR_HEIGHT - 40;
+      scrollRef.current.scrollTop = Math.max(0, scrollPos);
+    }
+  }, [events]);
 
   if (!schedule) return null;
 
-  const getTurnosForDay = (dia: string) => {
-    if (schedule.type === "simple") {
-      if (!["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"].includes(dia))
-        return [];
-      return [
-        {
-          ingreso: schedule.time_in?.substring(0, 5) || "",
-          salida: schedule.time_out?.substring(0, 5) || "",
-          colorClass: TURNO_COLORS[0],
-          title: "Horario Fijo",
-        },
-      ];
-    }
-    const bloque = schedule.blocks?.find((b) => b.day === dia);
-    if (!bloque) return [];
-    return bloque.turnos.map((turno, i) => ({
-      ...turno,
-      colorClass: TURNO_COLORS[i % TURNO_COLORS.length],
-      title: `Turno ${i + 1}`,
-    }));
-  };
-
-  const handleBodyScroll = () => {
-    if (headerScrollRef.current && bodyScrollRef.current) {
-      headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
-    }
-  };
-
   return (
-    // ✅ overflow-hidden en el wrapper — evita que el contenido se desborde
-    <div className="w-full bg-white border border-slate-200 rounded-xl shadow-sm font-sans overflow-hidden">
-      {/* ══ CABECERA ══ */}
-      <div className="flex border-b border-slate-200 bg-white">
-        {/* ✅ Celda esquina con fondo blanco igual que el header */}
-        <div
-          className="flex-shrink-0 border-r border-slate-200 bg-white flex items-end justify-center pb-2"
-          style={{ width: HOUR_COL_W, minWidth: HOUR_COL_W }}
-        >
-          <span className="text-[9px] font-medium text-slate-400 uppercase tracking-widest">
-            hora
-          </span>
-        </div>
-
-        {/* Header de días — overflow hidden, sincronizado con body */}
-        <div
-          ref={headerScrollRef}
-          className="overflow-hidden flex-1"
-          style={{ pointerEvents: "none" }}
-        >
-          <div className="flex" style={{ width: GRID_WIDTH }}>
-            {DIAS_SEMANA.map((dia) => {
-              const isWeekend = dia === "Sábado" || dia === "Domingo";
-              return (
-                <div
-                  key={dia}
-                  className={`
-                    flex-shrink-0 py-3 text-center
-                    border-r border-slate-200 last:border-r-0
-                    ${isWeekend ? "bg-rose-50/40" : "bg-white"}
-                  `}
-                  style={{ width: COL_WIDTH }}
-                >
-                  <span
-                    className={`
-                    text-[11px] font-bold uppercase tracking-wider
-                    ${isWeekend ? "text-rose-400" : "text-slate-600"}
-                  `}
-                  >
-                    {dia}
-                  </span>
-                  {/* ✅ Etiqueta "Fin de semana" debajo del nombre */}
-                  {isWeekend && (
-                    <p className="text-[9px] text-rose-300 font-medium mt-0.5">
-                      Fin de semana
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* ══ CUERPO ══ */}
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[70vh] min-h-[500px]">
       <div
-        ref={bodyScrollRef}
-        onScroll={handleBodyScroll}
-        className="overflow-auto"
-        style={{ maxHeight: 520 }}
+        className="flex-1 overflow-y-auto overflow-x-auto custom-scrollbar"
+        ref={scrollRef}
       >
-        {/* ✅ Wrapper con ancho exacto = columna horas + grid días */}
-        <div
-          className="flex relative"
-          style={{ width: HOUR_COL_W + GRID_WIDTH, height: GRID_HEIGHT }}
-        >
-          {/* ── Columna de horas ──────────────────────────────
-              ✅ sticky left:0 con z-index alto y fondo sólido
-              para que NUNCA quede tapada por las columnas de días
-          ────────────────────────────────────────────────── */}
-          <div
-            className="flex-shrink-0 border-r border-slate-200 bg-white"
-            style={{
-              width: HOUR_COL_W,
-              minWidth: HOUR_COL_W,
-              height: GRID_HEIGHT,
-              // ✅ sticky via style — más confiable que Tailwind en combinación con overflow-auto
-              position: "sticky",
-              left: 0,
-              zIndex: 20,
-              boxShadow: "2px 0 6px -2px rgba(0,0,0,0.06)", // sombra sutil para separar visualmente
-            }}
-          >
-            {HOURS.map((hour) => (
-              <div
-                key={hour}
-                className="relative border-t border-slate-100 first:border-t-0"
-                style={{ height: HOUR_HEIGHT }}
-              >
-                <span className="absolute -top-2.5 right-2 text-[10px] font-medium text-slate-400 whitespace-nowrap">
-                  {formatHourLabel(hour)}
-                </span>
-              </div>
+        <table className="w-full min-w-[700px] border-collapse table-fixed">
+          <colgroup>
+            <col className="w-16" />
+            {DIAS_SEMANA.map((_, i) => (
+              <col key={i} />
             ))}
-          </div>
+          </colgroup>
 
-          {/* ── Grid de días ── */}
-          <div
-            className="relative flex"
-            style={{ width: GRID_WIDTH, height: GRID_HEIGHT }}
-          >
-            {/* Líneas horizontales de fondo */}
-            <div className="absolute inset-0 pointer-events-none z-0">
-              {HOURS.map((hour) => (
-                <div
-                  key={hour}
-                  className="w-full border-t border-slate-100 first:border-t-0"
-                  style={{ height: HOUR_HEIGHT }}
-                />
-              ))}
-            </div>
-
-            {/* Columnas de cada día */}
-            {DIAS_SEMANA.map((dia) => {
-              const turnos = getTurnosForDay(dia);
-              const isWeekend = dia === "Sábado" || dia === "Domingo";
-
-              return (
-                <div
-                  key={dia}
-                  className={`
-                    relative flex-shrink-0
-                    border-r border-slate-200 last:border-r-0
-                  `}
-                  style={{
-                    width: COL_WIDTH,
-                    height: GRID_HEIGHT,
-                    // ✅ fondo diferenciado para fin de semana — más visible que opacity
-                    background: isWeekend
-                      ? "repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(251,207,232,0.15) 8px, rgba(251,207,232,0.15) 9px)"
-                      : undefined,
-                    backgroundColor: isWeekend
-                      ? "rgba(255,241,245,0.5)"
-                      : undefined,
-                  }}
-                >
-                  {/* ✅ Indicador visual sutil en fin de semana */}
-                  {isWeekend && turnos.length === 0 && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {/* ── CABECERA STICKY ── */}
+          <thead className="sticky top-0 z-20 shadow-sm">
+            <tr>
+              <th className="border-b border-r border-slate-200 bg-slate-50" />
+              {DIAS_SEMANA.map((dia, i) => {
+                const isToday = i === todayIdx;
+                const isWeekend = i >= 5;
+                return (
+                  <th
+                    key={dia}
+                    className={`border-b border-r border-slate-200 py-3 text-center transition-colors ${
+                      isWeekend && !isToday ? "bg-slate-50/80" : "bg-white"
+                    } ${isToday ? "bg-blue-50/40" : ""}`}
+                  >
+                    <div className="flex flex-col items-center justify-center gap-0.5">
                       <span
-                        className="text-[9px] font-bold text-rose-200 uppercase tracking-widest"
-                        style={{ writingMode: "vertical-rl", rotate: "180deg" }}
+                        className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
+                          isToday
+                            ? "bg-jbBlue text-white shadow-md"
+                            : isWeekend
+                              ? "text-rose-400"
+                              : "text-slate-500"
+                        }`}
                       >
-                        Descanso
+                        {dia}
                       </span>
+                      {isToday && (
+                        <span className="text-[9px] font-black text-jbBlue uppercase tracking-widest mt-0.5">
+                          Hoy
+                        </span>
+                      )}
                     </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          {/* ── CUERPO DE LA TABLA ── */}
+          <tbody>
+            {HOURS.map((h) => (
+              <tr key={h} style={{ height: HOUR_HEIGHT }}>
+                {/* Columna de Horas */}
+                <td className="relative border-r border-b border-slate-100 align-top p-0 bg-slate-50/50">
+                  {h !== 0 && (
+                    <span className="absolute right-2 -top-[9px] text-[10px] text-slate-400 font-medium select-none bg-slate-50 px-1 rounded">
+                      {formatHourLabel(h)}
+                    </span>
                   )}
+                </td>
 
-                  {turnos.map((turno, idx) => {
-                    if (!turno.ingreso || !turno.salida) return null;
+                {/* Columnas de Días */}
+                {DIAS_SEMANA.map((_, dayIdx) => (
+                  <td
+                    key={dayIdx}
+                    className={`relative border-b border-r border-slate-100 p-0 transition-colors ${
+                      dayIdx >= 5 ? "bg-slate-50/40" : "bg-white"
+                    } ${dayIdx === todayIdx ? "bg-blue-50/10" : ""}`}
+                  >
+                    {/* Renderizamos los eventos que empiezan en esta hora exacta */}
+                    {eventsByDay[dayIdx]
+                      .filter((ev) => Math.floor(ev.startHour) === h)
+                      .map((ev) => {
+                        const top = (ev.startHour - h) * HOUR_HEIGHT;
+                        let height = (ev.endHour - ev.startHour) * HOUR_HEIGHT;
 
-                    const startMins = timeToMinutes(turno.ingreso);
-                    const endMins = timeToMinutes(turno.salida);
-                    const topPx =
-                      (startMins - START_HOUR * 60) * (HOUR_HEIGHT / 60);
-                    const heightPx = (endMins - startMins) * (HOUR_HEIGHT / 60);
+                        // Si el turno cruza la medianoche (ej: 22:00 a 06:00)
+                        if (height <= 0) {
+                          height = (24 - ev.startHour) * HOUR_HEIGHT;
+                        }
 
-                    if (topPx < 0 || heightPx <= 0) return null;
+                        const isShort = height < 50;
 
-                    return (
-                      <div
-                        key={idx}
-                        className="absolute left-1 right-1 z-10"
-                        style={{ top: topPx, height: heightPx }}
-                      >
-                        <div
-                          className={`
-                          w-full h-full rounded-md border-l-4
-                          px-1.5 py-1 flex flex-col overflow-hidden
-                          shadow-sm hover:shadow-md transition-shadow
-                          cursor-default select-none
-                          ${turno.colorClass}
-                        `}
-                        >
-                          <span className="text-[9px] font-bold leading-tight truncate opacity-80">
-                            {formatTimeAMPM(turno.ingreso)} —{" "}
-                            {formatTimeAMPM(turno.salida)}
-                          </span>
-                          {heightPx > 32 && (
-                            <span className="text-[10px] font-semibold leading-tight truncate mt-0.5">
-                              {turno.title}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                        return (
+                          <div
+                            key={ev.id}
+                            className={`absolute left-0.5 right-0.5 rounded-md px-2 py-1.5 overflow-hidden shadow-sm hover:shadow-md cursor-default z-[10] border ${ev.colorClass}`}
+                            style={{
+                              top,
+                              height: Math.max(height, 24),
+                            }}
+                          >
+                            {isShort ? (
+                              <span className="text-[10px] font-bold leading-tight truncate block">
+                                {formatTimeAMPM(ev.ingreso)}
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-[10px] font-bold leading-tight truncate block opacity-90 mb-0.5">
+                                  {formatTimeAMPM(ev.ingreso)} -{" "}
+                                  {formatTimeAMPM(ev.salida)}
+                                </span>
+                                <span className="text-[11px] font-semibold leading-tight truncate block">
+                                  {ev.title}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
