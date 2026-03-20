@@ -11,10 +11,19 @@ interface Props {
 }
 
 const AREAS = [
-  "MARKETING DIGITAL", "DESARROLLO Y PROGRAMACIÓN WEB",
-  "DISEÑO Y PRODUCCIÓN AUDIOVISUAL", "SECRETARÍA DE GERENCIA",
-  "LEGAL", "PLANEAMIENTO ESTRATÉGICO", "SOMA",
+  "MARKETING DIGITAL",
+  "DESARROLLO Y PROGRAMACIÓN WEB",
+  "DISEÑO Y PRODUCCIÓN AUDIOVISUAL",
+  "SECRETARÍA DE GERENCIA",
+  "LEGAL",
+  "PLANEAMIENTO ESTRATÉGICO",
+  "SOMA",
   "PLANIFICACIÓN Y DESARROLLO DE EMPRESAS",
+  "ALIANZAS COMERCIALES",
+  "GESTIÓN COMERCIAL Y NEGOCIOS INTERNACIONALES",
+  "CONTABILIDAD Y FINANZAS",
+  "PLANEAMIENTO ESTRATÉGICO",
+  "BIENESTAR Y CULTURA HUMANA",
 ];
 
 const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser }) => {
@@ -59,7 +68,9 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
       setFormData({
         name: user.name, email: user.email, password: "",
         role: user.role, area: user.area, status: user.status,
-        schedule_id: user.schedule_id || "default-schedule-id",
+        schedule_id: user.schedule_id && user.schedule_id !== "default-schedule-id" 
+  ? user.schedule_id 
+  : (schedules.length > 0 ? schedules[0].id : "default-schedule-id"),
         lunchStartTime: (user as any).lunchStartTime || (user as any).lunch_start_time || "12:00",
         lunchLimit: (user as any).lunchLimit || (user as any).lunch_limit || "13:00",
       });

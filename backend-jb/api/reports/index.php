@@ -114,8 +114,8 @@ if ($method === 'GET' && $action === 'export') {
     $dateFrom = $_GET['dateFrom'] ?? date('Y-m-01');
     $dateTo   = $_GET['dateTo']   ?? date('Y-m-d');
 
-    if (!validarFecha($dateFrom)) $dateFrom = date('Y-m-01');
-    if (!validarFecha($dateTo))   $dateTo   = date('Y-m-d');
+ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) $dateFrom = date('Y-m-01');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo))   $dateTo   = date('Y-m-d');
 
     if ($authUser['role'] === 'admin') {
         $stmt = $db->prepare("
@@ -187,7 +187,7 @@ if ($method === 'GET' && $action === 'export') {
 // ─── AREAS ───────────────────────────────────────────────────
 if ($method === 'GET' && $action === 'areas') {
     $month = $_GET['month'] ?? date('Y-m');
-    if (!validarMes($month)) $month = date('Y-m');
+    if (!preg_match('/^\d{4}-\d{2}$/', $month)) $month = date('Y-m');
 
     $stmt = $db->prepare("
         SELECT u.area,

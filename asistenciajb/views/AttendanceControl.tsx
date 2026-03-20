@@ -11,11 +11,18 @@ interface Props {
   records: AttendanceRecord[];
   user: User;
   schedule: Schedule | null;
+  // ✅ FIX: lunchStartTime y lunchLimit vienen del perfil del usuario (no del registro)
+  userLunchStartTime: string;
+  userLunchLimit: string;
   onAdd: (record: AttendanceRecord) => void;
   onUpdate: (record: AttendanceRecord) => void;
 }
 
-const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, onUpdate }) => {
+const AttendanceControl: React.FC<Props> = ({
+  records, user, schedule,
+  userLunchStartTime, userLunchLimit,
+  onAdd, onUpdate,
+}) => {
   const [time, setTime] = useState(new Date());
   const [active, setActive] = useState<AttendanceRecord | null>(null);
   const [workedSeconds, setWorkedSeconds] = useState(0);
@@ -37,10 +44,17 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
     return () => clearInterval(t);
   }, []);
 
-  const getToday = () => {
-    const n = new Date();
-    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  // ✅ FIX #1: getToday() usando timezone America/Lima para que coincida con el backend
+  const getToday = (): string => {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Lima",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    // en-CA devuelve formato YYYY-MM-DD directamente
   };
+
   const today = getToday();
 
   // Timer de almuerzo
@@ -56,7 +70,10 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
   };
 
   const stopLunchTimer = () => {
-    if (lunchIntervalRef.current) { clearInterval(lunchIntervalRef.current); lunchIntervalRef.current = null; }
+    if (lunchIntervalRef.current) {
+      clearInterval(lunchIntervalRef.current);
+      lunchIntervalRef.current = null;
+    }
     lunchStartRef.current = null;
   };
 
@@ -73,8 +90,10 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
         setLunchDone(true); setIsOnLunch(false); stopLunchTimer();
         const ms = new Date(r.lunchEnd).getTime() - new Date(r.lunchStart).getTime();
         setLunchSeconds(Math.floor(ms / 1000));
-        if (r.lunchLimit) {
-          setLunchTardanza(new Date(r.lunchEnd) > new Date(today + "T" + r.lunchLimit));
+        // ✅ FIX #2: usar userLunchLimit (del perfil) si el registro no trae lunchLimit
+        const limitToUse = r.lunchLimit || userLunchLimit;
+        if (limitToUse) {
+          setLunchTardanza(new Date(r.lunchEnd) > new Date(today + "T" + limitToUse + ":00"));
         }
       } else if (r.lunchStart && !r.lunchEnd) {
         setIsOnLunch(true); setLunchDone(false);
@@ -82,8 +101,10 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
       } else {
         setIsOnLunch(false); setLunchDone(false); setLunchSeconds(0); stopLunchTimer();
       }
-    } else { stopLunchTimer(); }
-  }, [records, user.id]);
+    } else {
+      stopLunchTimer();
+    }
+  }, [records, user.id, today, userLunchLimit]);
 
   // Cronómetro horas trabajadas
   useEffect(() => {
@@ -124,15 +145,15 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
     const d = new Date(); d.setHours(h, m, 0, 0); return d;
   };
 
-  // ── Calcular si el botón de almuerzo está bloqueado ──────────
-  const lunchStartTime = (active as any)?.lunchStartTime || (active as any)?.lunch_start_time;
+  // ✅ FIX #2: lunchStartBlocked usa userLunchStartTime (prop del perfil del usuario)
   const lunchStartBlocked = (() => {
-    if (!lunchStartTime) return false;
-    const horaAlmuerzo = toDateHoy(lunchStartTime);
+    if (!userLunchStartTime) return false;
+    const horaAlmuerzo = toDateHoy(userLunchStartTime);
     return time < horaAlmuerzo;
   })();
-  const lunchStartHoraTexto = lunchStartTime
-    ? toDateHoy(lunchStartTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+
+  const lunchStartHoraTexto = userLunchStartTime
+    ? toDateHoy(userLunchStartTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
 
   // Estado botones entrada/salida
@@ -183,7 +204,11 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
           txtSalida: "Fin de Jornada", completedToday: false,
         };
       }
-      return { entradaDeshabilitada: false, salidaDeshabilitada: true, txtEntrada: `Turno de las ${turnoActual.ingreso}`, txtSalida: "Fin de Jornada", completedToday: false };
+      return {
+        entradaDeshabilitada: false, salidaDeshabilitada: true,
+        txtEntrada: `Turno de las ${turnoActual.ingreso}`,
+        txtSalida: "Fin de Jornada", completedToday: false,
+      };
     }
 
     if (isOnLunch) {
@@ -208,7 +233,8 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
       return {
         entradaDeshabilitada: true, salidaDeshabilitada: true,
         txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-        txtSalida: `Habilitado a las ${limiteSalida.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, completedToday: false,
+        txtSalida: `Habilitado a las ${limiteSalida.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+        completedToday: false,
       };
     }
     return {
@@ -233,10 +259,10 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
     setLoadingLunch(true);
     try {
       const result = await attendanceApi.lunchStart();
-      const lunchStartTime = new Date(result.lunchStart || result.lunch_start);
+      const lunchStartDate = new Date(result.lunchStart || result.lunch_start);
       setIsOnLunch(true);
-      setActive((prev: any) => prev ? { ...prev, lunchStart: lunchStartTime.toISOString() } : prev);
-      startLunchTimer(lunchStartTime);
+      setActive((prev: any) => prev ? { ...prev, lunchStart: lunchStartDate.toISOString() } : prev);
+      startLunchTimer(lunchStartDate);
     } catch (e: any) { alert(e.message); }
     finally { setLoadingLunch(false); }
   };
@@ -265,7 +291,13 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
-  const getGreeting = () => { const h = time.getHours(); if (h < 12) return "Buenos días"; if (h < 18) return "Buenas tardes"; return "Buenas noches"; };
+  const getGreeting = () => {
+    const h = time.getHours();
+    if (h < 12) return "Buenos días";
+    if (h < 18) return "Buenas tardes";
+    return "Buenas noches";
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Tardanza": return "bg-jbOrange/10 text-jbOrange border-jbOrange/20";
@@ -277,7 +309,8 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
   const firstName = user.name.split(" ")[0];
   const isTardanza = active?.status === "Tardanza";
   const tieneHorarioReal = schedule && schedule.id !== "default-schedule-id";
-  const activeLunchLimit = (active as any)?.lunchLimit || (active as any)?.lunch_limit;
+  // ✅ FIX #2: usar userLunchLimit (prop del perfil) para mostrar el límite en el cronómetro
+  const activeLunchLimit = userLunchLimit || (active as any)?.lunchLimit || (active as any)?.lunch_limit;
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6 animate-in slide-in-from-bottom-10 duration-700">
@@ -350,7 +383,9 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
               <span className="font-black text-jbOrange text-2xl tabular-nums font-heading">{formatTime(lunchSeconds)}</span>
               <span className="text-jbOrange font-black text-xs uppercase tracking-widest">ALMUERZO EN CURSO</span>
               {activeLunchLimit && (
-                <span className="text-jbOrange/60 font-bold text-xs border-l border-jbOrange/20 pl-3">límite: {activeLunchLimit}</span>
+                <span className="text-jbOrange/60 font-bold text-xs border-l border-jbOrange/20 pl-3">
+                  límite: {activeLunchLimit}
+                </span>
               )}
             </div>
           )}
@@ -393,7 +428,9 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
           {active && !completedToday && (
             <div className="mt-5">
               {!isOnLunch && !lunchDone && (
-                <button onClick={handleLunchStart} disabled={loadingLunch || lunchStartBlocked}
+                <button
+                  onClick={handleLunchStart}
+                  disabled={loadingLunch || lunchStartBlocked}
                   className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-black text-sm transition-all border disabled:opacity-60 ${
                     lunchStartBlocked
                       ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
@@ -403,13 +440,15 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
                     ? <><Clock className="w-4 h-4 animate-spin" /> REGISTRANDO...</>
                     : lunchStartBlocked
                       ? <><Lock className="w-4 h-4" /> ALMUERZO DISPONIBLE A LAS {lunchStartHoraTexto}</>
-                      : <><UtensilsCrossed className="w-4 h-4" /> INICIAR ALMUERZO {lunchStartTime ? `(desde ${lunchStartTime})` : ""}</>
+                      : <><UtensilsCrossed className="w-4 h-4" /> INICIAR ALMUERZO {userLunchStartTime ? `(desde ${userLunchStartTime})` : ""}</>
                   }
                 </button>
               )}
 
               {isOnLunch && (
-                <button onClick={handleLunchEnd} disabled={loadingLunch}
+                <button
+                  onClick={handleLunchEnd}
+                  disabled={loadingLunch}
                   className="w-full flex items-center justify-center gap-3 p-5 rounded-2xl bg-jbOrange text-white font-black text-sm transition-all shadow-lg shadow-jbOrange/20 hover:bg-orange-600 disabled:opacity-60">
                   {loadingLunch
                     ? <><Clock className="w-4 h-4 animate-spin" /> REGISTRANDO...</>
@@ -424,7 +463,9 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
                 }`}>
                   <span>{lunchResult}</span>
                   <span className="font-mono text-lg tabular-nums">{formatTime(lunchSeconds)}</span>
-                  {lunchTardanza && <span className="text-[10px] uppercase tracking-widest bg-red-100 px-2 py-1 rounded-full">TARDANZA</span>}
+                  {lunchTardanza && (
+                    <span className="text-[10px] uppercase tracking-widest bg-red-100 px-2 py-1 rounded-full">TARDANZA</span>
+                  )}
                 </div>
               )}
             </div>
@@ -481,7 +522,11 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
             <p className={`text-sm font-black font-heading tabular-nums ${lunchDone ? lunchTardanza ? "text-red-500" : "text-green-600" : isOnLunch ? "text-jbOrange" : "text-slate-400"}`}>
               {(lunchDone || isOnLunch) ? formatTime(lunchSeconds) : "—"}
             </p>
-            {lunchDone && <p className={`text-[9px] font-black uppercase ${lunchTardanza ? "text-red-400" : "text-green-500"}`}>{lunchTardanza ? "⚠️ TARDANZA" : "✅ A TIEMPO"}</p>}
+            {lunchDone && (
+              <p className={`text-[9px] font-black uppercase ${lunchTardanza ? "text-red-400" : "text-green-500"}`}>
+                {lunchTardanza ? "⚠️ TARDANZA" : "✅ A TIEMPO"}
+              </p>
+            )}
             {isOnLunch && <p className="text-[9px] text-jbOrange font-black uppercase animate-pulse">EN CURSO</p>}
           </div>
         </div>
@@ -517,8 +562,9 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
               const diffH = Math.floor(diffMs / 3600000), diffM = Math.floor((diffMs % 3600000) / 60000);
               const rAny = r as any;
               const tieneAlmuerzo = rAny.lunchStart && rAny.lunchEnd;
-              const almTardanza = tieneAlmuerzo && rAny.lunchLimit
-                ? new Date(rAny.lunchEnd) > new Date(r.date + "T" + rAny.lunchLimit)
+              const limitAlmuerzo = rAny.lunchLimit || userLunchLimit;
+              const almTardanza = tieneAlmuerzo && limitAlmuerzo
+                ? new Date(rAny.lunchEnd) > new Date(r.date + "T" + limitAlmuerzo + ":00")
                 : false;
 
               return (
@@ -526,7 +572,7 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
                     <p className="text-sm font-bold text-slate-700 uppercase">
-                      {new Date(r.date).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}
+                      {new Date(r.date + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}
                     </p>
                   </div>
                   <div className="flex items-center gap-4 flex-wrap justify-end">
@@ -538,7 +584,6 @@ const AttendanceControl: React.FC<Props> = ({ records, user, schedule, onAdd, on
                       <p className="text-[9px] text-jbGray font-black uppercase tracking-widest">Salida</p>
                       <p className="text-sm font-black text-jbBlue font-heading">{checkOutTime ? checkOutTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</p>
                     </div>
-                    {/* Almuerzo en historial */}
                     {tieneAlmuerzo && (
                       <div className="text-right">
                         <p className="text-[9px] text-jbGray font-black uppercase tracking-widest">Almuerzo</p>

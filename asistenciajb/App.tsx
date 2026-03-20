@@ -104,6 +104,8 @@ const App: React.FC = () => {
     lunchStart: r.lunchStart || r.lunch_start || undefined,
     lunchEnd: r.lunchEnd || r.lunch_end || undefined,
     lunchLimit: r.lunchLimit || r.lunch_limit || undefined,
+    // ✅ FIX: mapear lunchStartTime desde el registro de asistencia
+    lunchStartTime: r.lunchStartTime || r.lunch_start_time || undefined,
   });
 
   const handleLogin = async (user: User) => {
@@ -147,6 +149,9 @@ const App: React.FC = () => {
   const handleNavigation = (view: View) => {
     setCurrentView(view);
     if (window.innerWidth < 1024) setSidebarOpen(false);
+    if (view === "attendance" && currentUser) {
+      loadData(currentUser);
+    }
   };
 
   if (loading) {
@@ -211,7 +216,6 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
-            {/* Solo admin */}
             {currentUser.role === "admin" && (
               <>
                 <NavItem view="dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" />
@@ -220,12 +224,10 @@ const App: React.FC = () => {
                 <NavItem view="convenios-admin" icon={<Gift className="w-5 h-5" />} label="Gestionar Convenios" />
               </>
             )}
-
-            {/* Todos los usuarios */}
             <NavItem view="attendance" icon={<Clock className="w-5 h-5" />} label="Marcar Asistencia" />
             <NavItem view="history" icon={<History className="w-5 h-5" />} label="Historial" />
             <NavItem view="my-schedule" icon={<CalendarDays className="w-5 h-5" />} label="Mi Horario" />
-           <NavItem view="convenios" icon={<Gift className="w-5 h-5" />} label="Convenios" />
+            <NavItem view="convenios" icon={<Gift className="w-5 h-5" />} label="Convenios" />
           </nav>
 
           <div className="p-4 border-t border-slate-100 bg-slate-50/50">
@@ -299,6 +301,9 @@ const App: React.FC = () => {
                   (s) => s.id === currentUser.schedule_id
                 ) || null
               }
+              // ✅ FIX: pasar lunchStartTime y lunchLimit desde el perfil del usuario
+              userLunchStartTime={currentUser.lunchStartTime || (currentUser as any).lunch_start_time || ""}
+              userLunchLimit={currentUser.lunchLimit || (currentUser as any).lunch_limit || ""}
               onAdd={addRecord}
               onUpdate={updateRecord}
             />

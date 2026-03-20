@@ -17,7 +17,6 @@ interface Props {
 }
 
 const AREAS = [
-  "TODAS LAS ÁREAS",
   "MARKETING DIGITAL",
   "DESARROLLO Y PROGRAMACIÓN WEB",
   "DISEÑO Y PRODUCCIÓN AUDIOVISUAL",
@@ -26,6 +25,11 @@ const AREAS = [
   "PLANEAMIENTO ESTRATÉGICO",
   "SOMA",
   "PLANIFICACIÓN Y DESARROLLO DE EMPRESAS",
+  "ALIANZAS COMERCIALES",
+  "GESTIÓN COMERCIAL Y NEGOCIOS INTERNACIONALES",
+  "CONTABILIDAD Y FINANZAS",
+  "PLANEAMIENTO ESTRATÉGICO",
+  "BIENESTAR Y CULTURA HUMANA",
 ];
 
 const LIMIT = 10;
@@ -37,9 +41,15 @@ const AttendanceHistory: React.FC<Props> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [filterArea, setFilterArea] = useState("TODAS LAS ÁREAS");
   const [searchInput, setSearchInput] = useState("");
 
-  const loadRecords = async (p = 1, search = searchTerm, date = filterDate) => {
+  const loadRecords = async (
+    p = 1,
+    search = searchTerm,
+    date = filterDate,
+    area = filterArea,
+  ) => {
     setLoading(true);
     try {
       const params: any = { page: p, limit: LIMIT };
@@ -51,7 +61,16 @@ const AttendanceHistory: React.FC<Props> = ({ user }) => {
       if (user.role !== "admin") params.userId = user.id;
 
       const data = await attendanceApi.getAll(params);
-      setRecords(data.records);
+
+      // Filtrar por área en el frontend (ya que el backend no soporta filtro por área)
+      let filtered = data.records;
+      if (user.role === "admin" && area && area !== "TODAS LAS ÁREAS") {
+        filtered = data.records.filter((r: any) =>
+          (r.area || "").toUpperCase() === area.toUpperCase()
+        );
+      }
+
+      setRecords(filtered);
       setTotal(data.total);
       setPage(p);
     } catch (e) {
@@ -67,17 +86,21 @@ const AttendanceHistory: React.FC<Props> = ({ user }) => {
 
   const handleSearch = () => {
     setSearchTerm(searchInput);
-    loadRecords(1, searchInput, filterDate);
+    loadRecords(1, searchInput, filterDate, filterArea);
   };
 
   const handleDateChange = (date: string) => {
     setFilterDate(date);
-    loadRecords(1, searchTerm, date);
+    loadRecords(1, searchTerm, date, filterArea);
+  };
+
+  const handleAreaChange = (area: string) => {
+    setFilterArea(area);
+    loadRecords(1, searchTerm, filterDate, area);
   };
 
   const totalPages = Math.ceil(total / LIMIT);
 
-  // 🚀 NUEVO: Función para determinar los colores del estado
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Tardanza":
@@ -147,7 +170,11 @@ const AttendanceHistory: React.FC<Props> = ({ user }) => {
             {user.role === "admin" ? (
               <div className="relative">
                 <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-jbGray" />
-                <select className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-xs font-semibold focus:outline-none focus:border-jbBlue appearance-none transition-all shadow-sm">
+                <select
+                  className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-xs font-semibold focus:outline-none focus:border-jbBlue appearance-none transition-all shadow-sm"
+                  value={filterArea}
+                  onChange={(e) => handleAreaChange(e.target.value)}
+                >
                   {AREAS.map((a) => (
                     <option key={a} value={a}>
                       {a}
@@ -233,11 +260,10 @@ const AttendanceHistory: React.FC<Props> = ({ user }) => {
                     )}
                     <td className="px-8 py-5">
                       <p className="text-sm font-bold text-slate-700">
-                        {new Date(r.date).toLocaleDateString("es-ES", {
-                          day: "2-digit",
-                          month: "long",
-                          year: "numeric",
-                        })}
+                        {new Date(r.date + "T12:00:00").toLocaleDateString(
+                          "es-ES",
+                          { day: "2-digit", month: "long", year: "numeric" },
+                        )}
                       </p>
                     </td>
                     <td className="px-8 py-5">
@@ -269,7 +295,6 @@ const AttendanceHistory: React.FC<Props> = ({ user }) => {
                       )}
                     </td>
                     <td className="px-8 py-5">
-                      {/* 🚀 NUEVO: Aplicamos la función getStatusColor aquí */}
                       <span
                         className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest font-heading border shadow-sm ${getStatusColor(r.status)}`}
                       >
