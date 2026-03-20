@@ -48,6 +48,20 @@ export interface Schedule {
   blocks?: any;
 }
 
+// ✅ Nueva interfaz para Notificaciones
+export interface Notification {
+  id: string;
+  title: string;
+  body?: string;
+  image_url?: string;
+  pdf_url?: string;
+  audience: "all" | "area" | "user";
+  audience_value?: string;
+  created_by: string;
+  created_at: string;
+  is_read: boolean;
+}
+
 export type View =
   | "dashboard"
   | "attendance"
@@ -56,6 +70,7 @@ export type View =
   | "settings"
   | "schedules"
   | "notifications"
+  | "crear-notificacion" // ✅ nueva vista
   | "my-schedule"
   | "convenios"
   | "convenios-admin";
