@@ -58,6 +58,54 @@ CREATE TABLE IF NOT EXISTS sessions (
   INDEX idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ============================================================
+-- MIGRACIONES NUEVAS
+-- ============================================================
+
+-- Columnas de almuerzo en attendance_records
+ALTER TABLE attendance_records
+  ADD COLUMN IF NOT EXISTS lunch_start      DATETIME    DEFAULT NULL AFTER check_out,
+  ADD COLUMN IF NOT EXISTS lunch_end        DATETIME    DEFAULT NULL AFTER lunch_start,
+  ADD COLUMN IF NOT EXISTS lunch_limit      VARCHAR(5)  DEFAULT NULL AFTER lunch_end,
+  ADD COLUMN IF NOT EXISTS lunch_start_time VARCHAR(5)  DEFAULT NULL AFTER lunch_limit;
+
+-- Columnas de almuerzo y horario en users
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS lunch_limit      VARCHAR(5)  DEFAULT '13:00' AFTER area,
+  ADD COLUMN IF NOT EXISTS lunch_start_time VARCHAR(5)  DEFAULT '12:00' AFTER lunch_limit,
+  ADD COLUMN IF NOT EXISTS schedule_id      VARCHAR(36) DEFAULT 'default-schedule-id' AFTER lunch_start_time;
+
+-- Tabla de horarios
+CREATE TABLE IF NOT EXISTS schedules (
+  id                VARCHAR(36)  NOT NULL PRIMARY KEY,
+  name              VARCHAR(100) NOT NULL,
+  type              ENUM('simple','bloques') NOT NULL DEFAULT 'simple',
+  time_in           TIME         DEFAULT NULL,
+  time_out          TIME         DEFAULT NULL,
+  tolerance_minutes INT          NOT NULL DEFAULT 10,
+  blocks            LONGTEXT     DEFAULT NULL,
+  created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabla de convenios
+CREATE TABLE IF NOT EXISTS convenios (
+  id            VARCHAR(36)   NOT NULL PRIMARY KEY,
+  nombre        VARCHAR(150)  NOT NULL,
+  empresa       VARCHAR(150)  NOT NULL,
+  categoria     VARCHAR(50)   NOT NULL,
+  descripcion   TEXT          DEFAULT NULL,
+  beneficios    TEXT          DEFAULT NULL,
+  quienes       TEXT          DEFAULT NULL,
+  como_acceder  TEXT          DEFAULT NULL,
+  vigencia      VARCHAR(200)  DEFAULT NULL,
+  contacto      VARCHAR(300)  DEFAULT NULL,
+  descuento     VARCHAR(50)   DEFAULT NULL,
+  imagen_url    VARCHAR(500)  DEFAULT NULL,
+  activo        TINYINT(1)    NOT NULL DEFAULT 1,
+  created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ------------------------------------------------------------
 -- DATOS INICIALES - Admin por defecto
 -- password: admin1 (hash bcrypt)

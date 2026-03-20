@@ -8,11 +8,14 @@ export interface AttendanceRecord {
   id: string;
   userId: string;
   userName: string;
-  date: string; // ISO Date (YYYY-MM-DD)
-  checkIn: string; // ISO DateTime
-  checkOut?: string; // ISO DateTime
+  date: string;
+  checkIn: string;
+  checkOut?: string;
   status: AttendanceStatus;
   location?: string;
+  lunchStart?: string;
+  lunchEnd?: string;
+  lunchLimit?: string;
 }
 
 export interface User {
@@ -26,6 +29,18 @@ export interface User {
   status: "active" | "inactive";
   schedule_id?: string;
   schedule_name?: string;
+  lunch_limit?: string;
+  lunchLimit?: string;
+}
+
+export interface Schedule {
+  id: string;
+  name: string;
+  type: "simple" | "bloques";
+  time_in?: string;
+  time_out?: string;
+  tolerance_minutes: number;
+  blocks?: any;
 }
 
 export type View =
@@ -36,28 +51,6 @@ export type View =
   | "settings"
   | "schedules"
   | "notifications"
-  | "my-schedule";
-
-// ─── SCHEDULES (HORARIOS) ────────────────────────────────────
-
-export interface Turno {
-  ingreso: string; // formato HH:mm
-  salida: string; // formato HH:mm
-}
-
-export interface BloqueDia {
-  day: string; // "Lunes", "Martes", etc.
-  turnos: Turno[];
-}
-
-export interface Schedule {
-  id: string;
-  name: string;
-  type: "simple" | "bloques";
-  time_in?: string | null;
-  time_out?: string | null;
-  tolerance_minutes: number;
-  blocks?: BloqueDia[] | null;
-  created_at?: string;
-  updated_at?: string;
-}
+  | "my-schedule"
+  | "convenios"
+  | "convenios-admin";

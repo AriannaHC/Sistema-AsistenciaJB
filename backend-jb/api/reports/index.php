@@ -1,6 +1,6 @@
 <?php
 // ============================================================
-// api/reports/index.php — VERSIÓN SEGURA
+// api/reports/index.php — CON CONTEO DE ALMORZANDO
 // ============================================================
 
 require_once __DIR__ . '/../../helpers/functions.php';
@@ -9,10 +9,10 @@ require_once __DIR__ . '/../../middleware/auth.php';
 setCorsHeaders();
 setSecurityHeaders();
 
-$method = $_SERVER['REQUEST_METHOD'];
-$action = $_GET['action'] ?? 'dashboard';
+$method   = $_SERVER['REQUEST_METHOD'];
+$action   = $_GET['action'] ?? 'dashboard';
 $authUser = requireAuth();
-$db = getDB();
+$db       = getDB();
 
 if ($action === 'dashboard' && $authUser['role'] !== 'admin') {
     respondError('Acceso denegado. Se requiere rol de administrador.', 403);
@@ -21,11 +21,17 @@ if ($action === 'dashboard' && $authUser['role'] !== 'admin') {
 // ─── DASHBOARD ───────────────────────────────────────────────
 if ($method === 'GET' && $action === 'dashboard') {
     $today = date('Y-m-d');
-    $mes = date('Y-m');
+    $mes   = date('Y-m');
 
+    // Activos ahora (jornada abierta)
     $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE date = ? AND check_out IS NULL");
     $stmt->execute([$today]);
     $activeNow = (int) $stmt->fetchColumn();
+
+    // ✅ NUEVO: Almorzando ahora (lunch_start sin lunch_end)
+    $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE date = ? AND lunch_start IS NOT NULL AND lunch_end IS NULL AND check_out IS NULL");
+    $stmt->execute([$today]);
+    $onLunchNow = (int) $stmt->fetchColumn();
 
     $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE date = ?");
     $stmt->execute([$today]);
@@ -54,7 +60,7 @@ if ($method === 'GET' && $action === 'dashboard') {
     $stmt->execute([$mes]);
     $faltasMes = (int) $stmt->fetchColumn();
 
-    // attendanceRate corregido
+    // Attendance rate
     $stmt = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE DATE_FORMAT(date, '%Y-%m') = ?");
     $stmt->execute([$mes]);
     $totalMes = (int) $stmt->fetchColumn();
@@ -63,9 +69,7 @@ if ($method === 'GET' && $action === 'dashboard') {
     $stmt->execute([$mes]);
     $asistenciaMes = (int) $stmt->fetchColumn();
 
-    $attendanceRate = $totalMes > 0
-        ? round(($asistenciaMes / $totalMes) * 100, 1)
-        : 0;
+    $attendanceRate = $totalMes > 0 ? round(($asistenciaMes / $totalMes) * 100, 1) : 0;
 
     // Distribución de estados hoy
     $stmt = $db->prepare("SELECT status, COUNT(*) as total FROM attendance_records WHERE date = ? GROUP BY status");
@@ -86,20 +90,21 @@ if ($method === 'GET' && $action === 'dashboard') {
     $byArea = $stmt->fetchAll();
 
     respond(true, [
-        'activeNow' => $activeNow,
-        'todayCount' => $todayCount,
-        'totalRecords' => $totalRecords,
-        'totalUsers' => $totalUsers,
+        'activeNow'     => $activeNow,
+        'onLunchNow'    => $onLunchNow,  // ✅ NUEVO
+        'todayCount'    => $todayCount,
+        'totalRecords'  => $totalRecords,
+        'totalUsers'    => $totalUsers,
         'recentRecords' => $recent,
-        'byArea' => $byArea,
-        'attendanceRate' => $attendanceRate,
-        'tardanzasHoy' => $tardanzasHoy,
-        'tardanzasMes' => $tardanzasMes,
-        'faltasMes' => $faltasMes,
-        'estadosHoy' => [
+        'byArea'        => $byArea,
+        'attendanceRate'=> $attendanceRate,
+        'tardanzasHoy'  => $tardanzasHoy,
+        'tardanzasMes'  => $tardanzasMes,
+        'faltasMes'     => $faltasMes,
+        'estadosHoy'    => [
             'Presente' => $estadosHoy['Presente'] ?? 0,
             'Tardanza' => $estadosHoy['Tardanza'] ?? 0,
-            'Falta' => $estadosHoy['Falta'] ?? 0,
+            'Falta'    => $estadosHoy['Falta']    ?? 0,
         ],
     ]);
 }
@@ -107,13 +112,10 @@ if ($method === 'GET' && $action === 'dashboard') {
 // ─── EXPORT CSV ──────────────────────────────────────────────
 if ($method === 'GET' && $action === 'export') {
     $dateFrom = $_GET['dateFrom'] ?? date('Y-m-01');
-    $dateTo = $_GET['dateTo'] ?? date('Y-m-d');
+    $dateTo   = $_GET['dateTo']   ?? date('Y-m-d');
 
-    // ✅ Ambas usan validarFecha() centralizada
-    if (!validarFecha($dateFrom))
-        $dateFrom = date('Y-m-01');
-    if (!validarFecha($dateTo))
-        $dateTo = date('Y-m-d');
+    if (!validarFecha($dateFrom)) $dateFrom = date('Y-m-01');
+    if (!validarFecha($dateTo))   $dateTo   = date('Y-m-d');
 
     if ($authUser['role'] === 'admin') {
         $stmt = $db->prepare("
@@ -143,17 +145,38 @@ if ($method === 'GET' && $action === 'export') {
 
     $out = fopen('php://output', 'w');
     fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-    fputcsv($out, ['ID', 'Colaborador', 'Área', 'Fecha', 'Entrada', 'Salida', 'Estado'], ';');
+
+    // ✅ CSV con columnas de almuerzo + color indicador
+    fputcsv($out, [
+        'ID', 'Colaborador', 'Área', 'Fecha',
+        'Entrada', 'Salida', 'Estado',
+        'Inicio Almuerzo', 'Regreso Almuerzo', 'Estado Almuerzo'
+    ], ';');
 
     foreach ($records as $r) {
+        $almuerzoEstado = '';
+        if (!empty($r['lunch_start']) && !empty($r['lunch_end'])) {
+            if (!empty($r['lunch_limit'])) {
+                $limitDT = $r['date'] . ' ' . $r['lunch_limit'] . ':00';
+                $almuerzoEstado = strtotime($r['lunch_end']) > strtotime($limitDT)
+                    ? 'TARDANZA ALMUERZO'
+                    : 'A TIEMPO';
+            } else {
+                $almuerzoEstado = 'Registrado';
+            }
+        }
+
         fputcsv($out, [
             $r['id'],
             $r['user_name'],
             $r['area'],
             $r['date'],
-            $r['check_in'] ? date('H:i', strtotime($r['check_in'])) : '-',
+            $r['check_in']  ? date('H:i', strtotime($r['check_in']))  : '-',
             $r['check_out'] ? date('H:i', strtotime($r['check_out'])) : 'En curso',
             $r['status'],
+            !empty($r['lunch_start']) ? date('H:i', strtotime($r['lunch_start'])) : '-',
+            !empty($r['lunch_end'])   ? date('H:i', strtotime($r['lunch_end']))   : '-',
+            $almuerzoEstado,
         ], ';');
     }
 
@@ -164,10 +187,7 @@ if ($method === 'GET' && $action === 'export') {
 // ─── AREAS ───────────────────────────────────────────────────
 if ($method === 'GET' && $action === 'areas') {
     $month = $_GET['month'] ?? date('Y-m');
-
-    // ✅ Usa validarMes() centralizada
-    if (!validarMes($month))
-        $month = date('Y-m');
+    if (!validarMes($month)) $month = date('Y-m');
 
     $stmt = $db->prepare("
         SELECT u.area,
@@ -185,17 +205,16 @@ if ($method === 'GET' && $action === 'areas') {
     respond(true, $stmt->fetchAll());
 }
 
-// ─── HELPER ──────────────────────────────────────────────────
 function formatRecord(array $r): array
 {
     return [
-        'id' => $r['id'],
-        'userId' => $r['user_id'],
+        'id'       => $r['id'],
+        'userId'   => $r['user_id'],
         'userName' => $r['user_name'],
-        'date' => $r['date'],
-        'checkIn' => $r['check_in'],
+        'date'     => $r['date'],
+        'checkIn'  => $r['check_in'],
         'checkOut' => $r['check_out'] ?? null,
-        'status' => $r['status'],
+        'status'   => $r['status'],
     ];
 }
 
