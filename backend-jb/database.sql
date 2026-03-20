@@ -1,126 +1,147 @@
 -- ============================================================
--- SISTEMA DE ASISTENCIA JB - BASE DE DATOS
--- Compatible con MySQL 5.7+ (Hostinger)
+-- SISTEMA DE ASISTENCIA Y GESTIÓN JB - BASE DE DATOS INICIAL
+-- Compatible con MySQL 5.7+ / MariaDB (Hostinger, XAMPP)
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS asistencia_jb 
-  CHARACTER SET utf8mb4 
-  COLLATE utf8mb4_unicode_ci;
-
+-- 1. LIMPIEZA Y CREACIÓN DE BASE DE DATOS
+DROP DATABASE IF EXISTS asistencia_jb;
+CREATE DATABASE asistencia_jb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE asistencia_jb;
 
 -- ------------------------------------------------------------
--- TABLA: users
+-- TABLA: schedules (Horarios)
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS users (
-  id            VARCHAR(36)   NOT NULL PRIMARY KEY,
-  name          VARCHAR(150)  NOT NULL,
-  email         VARCHAR(100)  NOT NULL UNIQUE,
-  password_hash VARCHAR(255)  NOT NULL,
-  role          ENUM('admin','employee') NOT NULL DEFAULT 'employee',
-  avatar        VARCHAR(500)  DEFAULT NULL,
-  area          VARCHAR(100)  NOT NULL,
-  status        ENUM('active','inactive') NOT NULL DEFAULT 'active',
-  created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE `schedules` (
+  `id` varchar(36) NOT NULL PRIMARY KEY,
+  `name` varchar(100) NOT NULL,
+  `type` enum('simple','bloques') NOT NULL DEFAULT 'simple',
+  `time_in` time DEFAULT NULL,
+  `time_out` time DEFAULT NULL,
+  `tolerance_minutes` int(11) NOT NULL DEFAULT 10,
+  `blocks` longtext DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
--- TABLA: attendance_records
+-- TABLA: users (Usuarios)
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS attendance_records (
-  id          VARCHAR(36)   NOT NULL PRIMARY KEY,
-  user_id     VARCHAR(36)   NOT NULL,
-  user_name   VARCHAR(150)  NOT NULL,
-  date        DATE          NOT NULL,
-  check_in    DATETIME      NOT NULL,
-  check_out   DATETIME      DEFAULT NULL,
-  status      ENUM('Presente','Tardanza','Falta') NOT NULL DEFAULT 'Presente',
-  location    VARCHAR(255)  DEFAULT NULL,
-  created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_attendance_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_user_date (user_id, date),
-  INDEX idx_date (date)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE `users` (
+  `id` varchar(36) NOT NULL PRIMARY KEY,
+  `name` varchar(150) NOT NULL,
+  `email` varchar(100) NOT NULL UNIQUE,
+  `password_hash` varchar(255) NOT NULL,
+  `role` enum('admin','employee') NOT NULL DEFAULT 'employee',
+  `avatar` varchar(500) DEFAULT NULL,
+  `area` varchar(100) NOT NULL,
+  `lunch_limit` varchar(5) DEFAULT '13:00',
+  `lunch_start_time` varchar(5) DEFAULT '12:00',
+  `schedule_id` varchar(36) DEFAULT 'default-schedule-id',
+  `status` enum('active','inactive') NOT NULL DEFAULT 'active',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
--- TABLA: sessions (JWT tokens activos)
+-- TABLA: attendance_records (Registro de Asistencias)
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sessions (
-  id          INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  user_id     VARCHAR(36)   NOT NULL,
-  token       VARCHAR(500)  NOT NULL UNIQUE,
-  expires_at  DATETIME      NOT NULL,
-  created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_token (token(255)),
-  INDEX idx_user (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE `attendance_records` (
+  `id` varchar(36) NOT NULL PRIMARY KEY,
+  `user_id` varchar(36) NOT NULL,
+  `user_name` varchar(150) NOT NULL,
+  `date` date NOT NULL,
+  `check_in` datetime NOT NULL,
+  `check_out` datetime DEFAULT NULL,
+  `lunch_start` datetime DEFAULT NULL,
+  `lunch_end` datetime DEFAULT NULL,
+  `lunch_limit` varchar(5) DEFAULT NULL,
+  `lunch_start_time` varchar(5) DEFAULT NULL,
+  `status` enum('Presente','Tardanza','Falta') NOT NULL DEFAULT 'Presente',
+  `location` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  CONSTRAINT `fk_attendance_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  INDEX `idx_user_date` (`user_id`,`date`),
+  INDEX `idx_date` (`date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- TABLA: sessions (Tokens JWT)
+-- ------------------------------------------------------------
+CREATE TABLE `sessions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` varchar(36) NOT NULL,
+  `token` varchar(500) NOT NULL UNIQUE,
+  `expires_at` datetime NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  CONSTRAINT `fk_session_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  INDEX `idx_token` (`token`(255)),
+  INDEX `idx_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- TABLA: convenios (Beneficios Corporativos)
+-- ------------------------------------------------------------
+CREATE TABLE `convenios` (
+  `id` varchar(36) NOT NULL PRIMARY KEY,
+  `nombre` varchar(150) NOT NULL,
+  `empresa` varchar(150) NOT NULL,
+  `categoria` varchar(50) NOT NULL,
+  `descripcion` text DEFAULT NULL,
+  `beneficios` text DEFAULT NULL,
+  `quienes` text DEFAULT NULL,
+  `como_acceder` text DEFAULT NULL,
+  `vigencia` varchar(200) DEFAULT NULL,
+  `contacto` varchar(300) DEFAULT NULL,
+  `descuento` varchar(50) DEFAULT NULL,
+  `imagen_url` varchar(500) DEFAULT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- TABLA: notifications (Módulo de Comunicados)
+-- ------------------------------------------------------------
+CREATE TABLE `notifications` (
+  `id` varchar(36) NOT NULL PRIMARY KEY,
+  `title` varchar(200) NOT NULL,
+  `body` text DEFAULT NULL,
+  `image_url` varchar(500) DEFAULT NULL,
+  `pdf_url` varchar(500) DEFAULT NULL,
+  `audience` enum('all','area','user') NOT NULL DEFAULT 'all',
+  `audience_value` varchar(150) DEFAULT NULL,
+  `created_by` varchar(36) NOT NULL,
+  `idempotency_key` varchar(64) DEFAULT NULL UNIQUE,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  INDEX `idx_audience` (`audience`, `audience_value`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- TABLA: notification_reads (Rastreo de lecturas)
+-- ------------------------------------------------------------
+CREATE TABLE `notification_reads` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `notification_id` varchar(36) NOT NULL,
+  `user_id` varchar(36) NOT NULL,
+  `read_at` datetime NOT NULL DEFAULT current_timestamp(),
+  UNIQUE KEY `uq_user_notification` (`notification_id`, `user_id`),
+  INDEX `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 -- ============================================================
--- MIGRACIONES NUEVAS
+-- DATOS INICIALES (SEMILLA)
 -- ============================================================
 
--- Columnas de almuerzo en attendance_records
-ALTER TABLE attendance_records
-  ADD COLUMN IF NOT EXISTS lunch_start      DATETIME    DEFAULT NULL AFTER check_out,
-  ADD COLUMN IF NOT EXISTS lunch_end        DATETIME    DEFAULT NULL AFTER lunch_start,
-  ADD COLUMN IF NOT EXISTS lunch_limit      VARCHAR(5)  DEFAULT NULL AFTER lunch_end,
-  ADD COLUMN IF NOT EXISTS lunch_start_time VARCHAR(5)  DEFAULT NULL AFTER lunch_limit;
+-- 1. Insertar Horario Base
+INSERT INTO `schedules` (`id`, `name`, `type`, `time_in`, `time_out`, `tolerance_minutes`, `blocks`) VALUES
+('SCH-6CE59E', 'Horario Base', 'simple', '10:00:00', '16:00:00', 10, NULL);
 
--- Columnas de almuerzo y horario en users
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS lunch_limit      VARCHAR(5)  DEFAULT '13:00' AFTER area,
-  ADD COLUMN IF NOT EXISTS lunch_start_time VARCHAR(5)  DEFAULT '12:00' AFTER lunch_limit,
-  ADD COLUMN IF NOT EXISTS schedule_id      VARCHAR(36) DEFAULT 'default-schedule-id' AFTER lunch_start_time;
-
--- Tabla de horarios
-CREATE TABLE IF NOT EXISTS schedules (
-  id                VARCHAR(36)  NOT NULL PRIMARY KEY,
-  name              VARCHAR(100) NOT NULL,
-  type              ENUM('simple','bloques') NOT NULL DEFAULT 'simple',
-  time_in           TIME         DEFAULT NULL,
-  time_out          TIME         DEFAULT NULL,
-  tolerance_minutes INT          NOT NULL DEFAULT 10,
-  blocks            LONGTEXT     DEFAULT NULL,
-  created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Tabla de convenios
-CREATE TABLE IF NOT EXISTS convenios (
-  id            VARCHAR(36)   NOT NULL PRIMARY KEY,
-  nombre        VARCHAR(150)  NOT NULL,
-  empresa       VARCHAR(150)  NOT NULL,
-  categoria     VARCHAR(50)   NOT NULL,
-  descripcion   TEXT          DEFAULT NULL,
-  beneficios    TEXT          DEFAULT NULL,
-  quienes       TEXT          DEFAULT NULL,
-  como_acceder  TEXT          DEFAULT NULL,
-  vigencia      VARCHAR(200)  DEFAULT NULL,
-  contacto      VARCHAR(300)  DEFAULT NULL,
-  descuento     VARCHAR(50)   DEFAULT NULL,
-  imagen_url    VARCHAR(500)  DEFAULT NULL,
-  activo        TINYINT(1)    NOT NULL DEFAULT 1,
-  created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ------------------------------------------------------------
--- DATOS INICIALES - Admin por defecto
--- password: admin1 (hash bcrypt)
--- ------------------------------------------------------------
-INSERT INTO users (id, name, email, password_hash, role, avatar, area, status)
-VALUES (
-  'u-admin-jb-001',
-  'Administrador JB',
-  'admin1',
-  '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
-  'admin',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=AdminJB',
-  'PLANEAMIENTO ESTRATÉGICO',
-  'active'
-) ON DUPLICATE KEY UPDATE name = name;
+-- 2. Insertar Administrador Principal (Pass: Admin$$123)
+INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `area`, `lunch_limit`, `lunch_start_time`, `schedule_id`, `status`) VALUES
+('78f609fb-568f-46bd-b6b9-4f4c4ce21fb9', 'Administrador JB', 'admin@jb.com', '$2y$12$uJ5ZWBV1OYPr3ihbkRIRQef4rBTjNqOwIseGskfs6vYtKoqN06cBu', 'admin', 'https://cdn-icons-png.flaticon.com/512/149/149071.png', 'SECRETARÍA DE GERENCIA', '13:00', '12:00', 'SCH-6CE59E', 'active');
 
 -- ============================================================
 -- FIN DEL SCRIPT
