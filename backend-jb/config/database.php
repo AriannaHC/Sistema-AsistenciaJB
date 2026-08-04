@@ -1,7 +1,7 @@
 <?php
 date_default_timezone_set('America/Lima');
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'asistencia_jb');
+define('DB_NAME', 'u396689162_asistencia');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');

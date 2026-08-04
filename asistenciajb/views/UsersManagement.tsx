@@ -48,8 +48,9 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
   }, []);
 
   const filteredUsers = users.filter(u =>
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    u.status === 'active' &&
+    (u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const openModal = (user: User | null = null) => {
@@ -155,7 +156,6 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                 <th className="px-8 py-5 text-[11px] font-black text-jbBlue uppercase font-heading tracking-widest">Área / Horario</th>
                 <th className="px-8 py-5 text-[11px] font-black text-jbBlue uppercase font-heading tracking-widest">Almuerzo</th>
                 <th className="px-8 py-5 text-[11px] font-black text-jbBlue uppercase font-heading tracking-widest">Rol</th>
-                <th className="px-8 py-5 text-[11px] font-black text-jbBlue uppercase font-heading tracking-widest">Estado</th>
                 <th className="px-8 py-5 text-[11px] font-black text-jbBlue uppercase font-heading tracking-widest text-right">Acciones</th>
               </tr>
             </thead>
@@ -194,12 +194,6 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                       {u.role}
                     </span>
                   </td>
-                  <td className="px-8 py-5">
-                    <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase ${u.status === "active" ? "text-jbTurquoise" : "text-jbRed"}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${u.status === "active" ? "bg-jbTurquoise" : "bg-jbRed"}`} />
-                      {u.status === "active" ? "Activo" : "Inactivo"}
-                    </span>
-                  </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button onClick={() => openModal(u)} className="p-2.5 rounded-xl bg-slate-100 text-jbBlue hover:bg-jbBlue hover:text-white transition-all">
@@ -213,7 +207,7 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                 </tr>
               ))}
               {filteredUsers.length === 0 && (
-                <tr><td colSpan={6} className="px-8 py-20 text-center text-jbGray font-bold text-sm">Sin colaboradores encontrados</td></tr>
+                <tr><td colSpan={5} className="px-8 py-20 text-center text-jbGray font-bold text-sm">Sin colaboradores encontrados</td></tr>
               )}
             </tbody>
           </table>
@@ -302,7 +296,7 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                   value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-jbGray uppercase tracking-widest px-1">Rol de Acceso</label>
                   {editingUser?.id === currentUser.id ? (
@@ -318,26 +312,6 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                           {r === "admin" ? "ADMIN" : "EMPLEADO"}
                         </button>
                       ))}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-jbGray uppercase tracking-widest px-1">Estado de Cuenta</label>
-                  {editingUser?.id === currentUser.id ? (
-                    <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-semibold text-slate-400 flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase text-jbTurquoise">ACTIVO</span>
-                      <span className="text-[9px] text-slate-400 ml-auto">No editable</span>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setFormData({ ...formData, status: "active" })}
-                        className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.status === "active" ? "bg-jbTurquoise text-white border-jbTurquoise" : "bg-slate-50 text-jbGray border-slate-200"}`}>
-                        ACTIVO
-                      </button>
-                      <button type="button" onClick={() => setFormData({ ...formData, status: "inactive" })}
-                        className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.status === "inactive" ? "bg-jbRed text-white border-jbRed" : "bg-slate-50 text-jbGray border-slate-200"}`}>
-                        INACTIVO
-                      </button>
                     </div>
                   )}
                 </div>
@@ -379,11 +353,11 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
             </div>
             <div className="px-8 pb-8 grid grid-cols-2 gap-4">
               <button onClick={() => setDeleteModal({ open: false, user: null })} disabled={deleting}
-                className="py-4 rounded-2xl border-2 border-slate-200 text-jbGray font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all disabled:opacity-60">
+                className="py-4 rounded-2xl bg-jbBlue text-white font-black text-xs uppercase tracking-widest hover:bg-jbNavy transition-all shadow-lg shadow-jbBlue/20 disabled:opacity-60">
                 CANCELAR
               </button>
               <button onClick={handleDelete} disabled={deleting}
-                className="py-4 rounded-2xl bg-jbRed text-white font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-jbRed/20 disabled:opacity-60">
+                className="py-4 rounded-2xl border-2 border-slate-200 text-jbGray font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all disabled:opacity-60">
                 {deleting ? "ELIMINANDO..." : "SÍ, ELIMINAR"}
               </button>
             </div>
