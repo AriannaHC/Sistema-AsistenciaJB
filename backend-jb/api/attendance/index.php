@@ -100,7 +100,6 @@ if ($method === 'POST' && $action === 'checkin') {
         }
     }
 
-    // Traer lunch_limit y lunch_start_time del usuario
     $stmtU = $db->prepare("SELECT lunch_limit, lunch_start_time FROM users WHERE id = ?");
     $stmtU->execute([$authUser['id']]);
     $userRow        = $stmtU->fetch();
@@ -220,7 +219,6 @@ if ($method === 'POST' && $action === 'lunch_start') {
     if (!$record) respondError('No tienes una jornada activa hoy. Registra tu entrada primero.');
     if ($record['lunch_start']) respondError('El almuerzo ya fue iniciado hoy.');
 
-    // Validar hora de inicio de almuerzo
     $lunchStartTime = $record['lunch_start_time'] ?? '12:00';
     if ($lunchStartTime) {
         $horaInicioAlmuerzo = DateTime::createFromFormat('Y-m-d H:i', $today . ' ' . $lunchStartTime);
@@ -276,10 +274,20 @@ if ($method === 'POST' && $action === 'lunch_end') {
 if ($method === 'GET' && $action === 'today') {
     $today = date('Y-m-d');
     if ($authUser['role'] === 'admin') {
-        $stmt = $db->prepare("SELECT * FROM attendance_records WHERE date = ? ORDER BY check_in DESC");
+        $stmt = $db->prepare("
+            SELECT ar.*, u.area
+            FROM attendance_records ar
+            LEFT JOIN users u ON u.id = ar.user_id
+            WHERE ar.date = ? ORDER BY ar.check_in DESC
+        ");
         $stmt->execute([$today]);
     } else {
-        $stmt = $db->prepare("SELECT * FROM attendance_records WHERE date = ? AND user_id = ? ORDER BY check_in DESC");
+        $stmt = $db->prepare("
+            SELECT ar.*, u.area
+            FROM attendance_records ar
+            LEFT JOIN users u ON u.id = ar.user_id
+            WHERE ar.date = ? AND ar.user_id = ? ORDER BY ar.check_in DESC
+        ");
         $stmt->execute([$today, $authUser['id']]);
     }
     respond(true, array_map('formatRecord', $stmt->fetchAll()));
@@ -299,28 +307,45 @@ if ($method === 'GET') {
     $params = [];
 
     if ($authUser['role'] !== 'admin') {
-        $where[]  = 'user_id = ?';
+        $where[]  = 'ar.user_id = ?';
         $params[] = $authUser['id'];
     } elseif ($userId) {
-        $where[]  = 'user_id = ?';
+        $where[]  = 'ar.user_id = ?';
         $params[] = $userId;
     }
     if ($search) {
-        $s = sanitizarTexto($search); $where[] = 'user_name LIKE ?'; $params[] = "%$s%";
+        $s = sanitizarTexto($search);
+        $where[] = 'ar.user_name LIKE ?';
+        $params[] = "%$s%";
     }
     if ($dateFrom) {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) respondError('Formato de fecha inválido.', 400);
-        $where[] = 'date >= ?'; $params[] = $dateFrom;
+        $where[] = 'ar.date >= ?'; $params[] = $dateFrom;
     }
     if ($dateTo) {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) respondError('Formato de fecha inválido.', 400);
-        $where[] = 'date <= ?'; $params[] = $dateTo;
+        $where[] = 'ar.date <= ?'; $params[] = $dateTo;
     }
 
     $whereSQL = implode(' AND ', $where);
-    $stmt     = $db->prepare("SELECT * FROM attendance_records WHERE $whereSQL ORDER BY check_in DESC LIMIT $limit OFFSET $offset");
+
+    // ✅ JOIN con users para traer el área
+    $stmt = $db->prepare("
+        SELECT ar.*, u.area
+        FROM attendance_records ar
+        LEFT JOIN users u ON u.id = ar.user_id
+        WHERE $whereSQL
+        ORDER BY ar.check_in DESC
+        LIMIT $limit OFFSET $offset
+    ");
     $stmt->execute($params);
-    $stmtC = $db->prepare("SELECT COUNT(*) FROM attendance_records WHERE $whereSQL");
+
+    $stmtC = $db->prepare("
+        SELECT COUNT(*)
+        FROM attendance_records ar
+        LEFT JOIN users u ON u.id = ar.user_id
+        WHERE $whereSQL
+    ");
     $stmtC->execute($params);
 
     respond(true, [
@@ -342,10 +367,11 @@ function formatRecord(array $r): array
         'checkOut'       => $r['check_out']        ?? null,
         'status'         => $r['status'],
         'location'       => $r['location']         ?? null,
-        'lunchStart'     => $r['lunch_start']       ?? null,
-        'lunchEnd'       => $r['lunch_end']         ?? null,
-        'lunchLimit'     => $r['lunch_limit']       ?? null,
-        'lunchStartTime' => $r['lunch_start_time']  ?? null,
+        'area'           => $r['area']             ?? null,
+        'lunchStart'     => $r['lunch_start']      ?? null,
+        'lunchEnd'       => $r['lunch_end']        ?? null,
+        'lunchLimit'     => $r['lunch_limit']      ?? null,
+        'lunchStartTime' => $r['lunch_start_time'] ?? null,
     ];
 }
 

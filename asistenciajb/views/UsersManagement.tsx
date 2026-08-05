@@ -11,10 +11,19 @@ interface Props {
 }
 
 const AREAS = [
-  "MARKETING DIGITAL", "DESARROLLO Y PROGRAMACIÓN WEB",
-  "DISEÑO Y PRODUCCIÓN AUDIOVISUAL", "SECRETARÍA DE GERENCIA",
-  "LEGAL", "PLANEAMIENTO ESTRATÉGICO", "SOMA",
+  "MARKETING DIGITAL",
+  "DESARROLLO Y PROGRAMACIÓN WEB",
+  "DISEÑO Y PRODUCCIÓN AUDIOVISUAL",
+  "SECRETARÍA DE GERENCIA",
+  "LEGAL",
+  "PLANEAMIENTO ESTRATÉGICO",
+  "SOMA",
   "PLANIFICACIÓN Y DESARROLLO DE EMPRESAS",
+  "ALIANZAS COMERCIALES",
+  "GESTIÓN COMERCIAL Y NEGOCIOS INTERNACIONALES",
+  "CONTABILIDAD Y FINANZAS",
+  "BIENESTAR Y CULTURA HUMANA",
+  "OPERACIONES",
 ];
 
 const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser }) => {
@@ -35,6 +44,7 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
     schedule_id: "default-schedule-id",
     lunchStartTime: "12:00",
     lunchLimit: "13:00",
+    lunchTolerance: 5,
   });
 
   useEffect(() => {
@@ -47,6 +57,17 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
     fetchSchedules();
   }, []);
 
+  useEffect(() => {
+    if (schedules.length > 0 && isModalOpen && !editingUser) {
+      setFormData(prev => ({
+        ...prev,
+        schedule_id: prev.schedule_id === "default-schedule-id"
+          ? schedules[0].id
+          : prev.schedule_id,
+      }));
+    }
+  }, [schedules]);
+
   const filteredUsers = users.filter(u =>
     u.status === 'active' &&
     (u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -58,18 +79,26 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
     if (user) {
       setEditingUser(user);
       setFormData({
-        name: user.name, email: user.email, password: "",
-        role: user.role, area: user.area, status: user.status,
-        schedule_id: user.schedule_id || "default-schedule-id",
+        name: user.name,
+        email: user.email,
+        password: "",
+        role: user.role,
+        area: user.area,
+        status: user.status,
+        schedule_id: user.schedule_id ?? "default-schedule-id",
         lunchStartTime: (user as any).lunchStartTime || (user as any).lunch_start_time || "12:00",
         lunchLimit: (user as any).lunchLimit || (user as any).lunch_limit || "13:00",
+        lunchTolerance: (user as any).lunchTolerance ?? 5,
       });
     } else {
       setEditingUser(null);
       setFormData({
         name: "", email: "", password: "", role: "employee", area: AREAS[0],
-        status: "active", schedule_id: schedules.length > 0 ? schedules[0].id : "default-schedule-id",
-        lunchStartTime: "12:00", lunchLimit: "13:00",
+        status: "active",
+        schedule_id: schedules.length > 0 ? schedules[0].id : "default-schedule-id",
+        lunchStartTime: "12:00",
+        lunchLimit: "13:00",
+        lunchTolerance: 5,
       });
     }
     setIsModalOpen(true);
@@ -86,6 +115,7 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
           area: formData.area, schedule_id: formData.schedule_id,
           lunchStartTime: formData.lunchStartTime,
           lunchLimit: formData.lunchLimit,
+          lunchTolerance: formData.lunchTolerance,
         };
         if (editingUser.id !== currentUser.id) {
           payload.role = formData.role;
@@ -98,6 +128,7 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
           name: formData.name, email: formData.email, password: formData.password,
           role: formData.role, area: formData.area, schedule_id: formData.schedule_id,
           lunchStartTime: formData.lunchStartTime, lunchLimit: formData.lunchLimit,
+          lunchTolerance: formData.lunchTolerance,
         } as any);
       }
       const fresh = await usersApi.getAll();
@@ -188,6 +219,9 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                         {(u as any).lunchLimit || (u as any).lunch_limit || "13:00"}
                       </span>
                     </div>
+                    <span className="text-[9px] text-slate-400 font-bold mt-0.5 block">
+                      Tolerancia: {(u as any).lunchTolerance ?? 5} min
+                    </span>
                   </td>
                   <td className="px-8 py-5">
                     <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${u.role === "admin" ? "bg-jbBlue/10 text-jbBlue border-jbBlue/20" : "bg-slate-100 text-slate-600 border-slate-200"}`}>
@@ -251,9 +285,13 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-jbGray uppercase tracking-widest px-1">Horario Asignado</label>
-                  <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-semibold focus:outline-none focus:border-jbBlue transition-all"
-                    value={formData.schedule_id} onChange={e => setFormData({ ...formData, schedule_id: e.target.value })}>
-                    {schedules.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-semibold focus:outline-none focus:border-jbBlue transition-all"
+                    value={formData.schedule_id}
+                    onChange={e => setFormData({ ...formData, schedule_id: e.target.value })}>
+                    {schedules.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -264,7 +302,7 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                   <Clock className="w-3.5 h-3.5 text-jbOrange" /> Horario de Almuerzo
                 </label>
                 <div className="bg-jbOrange/5 border border-jbOrange/20 rounded-2xl px-5 py-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
                       <p className="text-[10px] font-black text-jbGray uppercase tracking-widest mb-1.5">Inicio almuerzo</p>
                       <input type="time" required
@@ -279,9 +317,18 @@ const UsersManagement: React.FC<Props> = ({ users, onUpdateUsers, currentUser })
                         value={formData.lunchLimit}
                         onChange={e => setFormData({ ...formData, lunchLimit: e.target.value })} />
                     </div>
+                    <div>
+                      <p className="text-[10px] font-black text-jbGray uppercase tracking-widest mb-1.5">Tolerancia (min)</p>
+                      <input
+                        type="number" min={0} max={60}
+                        className="w-full bg-white border border-jbOrange/20 rounded-xl py-2.5 px-3 text-lg font-black text-jbOrange font-heading focus:outline-none focus:border-jbOrange tabular-nums"
+                        value={formData.lunchTolerance}
+                        onChange={e => setFormData({ ...formData, lunchTolerance: Math.min(60, Math.max(0, parseInt(e.target.value) || 0)) })}
+                      />
+                    </div>
                   </div>
                   <p className="text-[10px] text-slate-400 font-semibold">
-                    El botón de almuerzo se habilita a la hora de inicio. Si regresa después del límite, se marcará en <span className="text-jbRed font-black">ROJO</span>.
+                    Si regresa después del límite + tolerancia, se marcará en <span className="text-jbRed font-black">ROJO</span>.
                   </p>
                 </div>
               </div>

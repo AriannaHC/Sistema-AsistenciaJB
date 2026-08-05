@@ -193,12 +193,20 @@ export const reportsApi = {
       attendanceRate: number;
     }>("/api/reports/?action=dashboard"),
 
-  exportCSV: async (dateFrom?: string, dateTo?: string) => {
+  // ✅ Ahora recibe también área y búsqueda para exportar solo lo filtrado
+  exportCSV: async (
+    dateFrom?: string,
+    dateTo?: string,
+    area?: string,
+    search?: string,
+  ) => {
     const token = getToken();
     const params = new URLSearchParams({
       action: "export",
       ...(dateFrom ? { dateFrom } : {}),
-      ...(dateTo ? { dateTo } : {}),
+      ...(dateTo   ? { dateTo }   : {}),
+      ...(area     ? { area }     : {}),
+      ...(search   ? { search }   : {}),
     });
     const res = await fetch(`${API_BASE}/api/reports/?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -286,13 +294,11 @@ export const notificationsApi = {
     }),
 
   // POST — crear notificación con multipart/form-data
-  // ⚠️ NO se envía Content-Type manualmente — el navegador lo pone solo con el boundary
   create: async (formData: FormData) => {
     const token = getToken();
     const res = await fetch(`${API_BASE}/api/notifications/`, {
       method: "POST",
       headers: {
-        // Solo Authorization — sin Content-Type para que el browser maneje el boundary
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: formData,

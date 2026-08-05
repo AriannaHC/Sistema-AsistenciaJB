@@ -25,6 +25,12 @@ const AREAS = [
   "PLANEAMIENTO ESTRATÉGICO",
   "SOMA",
   "PLANIFICACIÓN Y DESARROLLO DE EMPRESAS",
+  "ALIANZAS COMERCIALES",
+  "GESTIÓN COMERCIAL Y NEGOCIOS INTERNACIONALES",
+  "CONTABILIDAD Y FINANZAS",
+  "PLANEAMIENTO ESTRATÉGICO",
+  "BIENESTAR Y CULTURA HUMANA",
+  "OPERACIONES",
 ];
 
 const ALLOWED_DOMAINS = [
@@ -34,7 +40,7 @@ const ALLOWED_DOMAINS = [
   "yahoo.com",
   "outlook.es",
   "hotmail.es",
-  "jb.com",
+  "consultoradeasesoriaempresarialjb.com", // ✅ dominio corporativo correcto
 ];
 
 const isValidEmail = (email: string) =>

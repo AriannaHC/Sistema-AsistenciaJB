@@ -16,6 +16,8 @@ export interface AttendanceRecord {
   lunchStart?: string;
   lunchEnd?: string;
   lunchLimit?: string;
+  // ✅ FIX: campo para la hora mínima de inicio de almuerzo
+  lunchStartTime?: string;
 }
 
 export interface User {
@@ -31,6 +33,9 @@ export interface User {
   schedule_name?: string;
   lunch_limit?: string;
   lunchLimit?: string;
+  // ✅ FIX: ambas variantes para cubrir lo que devuelve el backend
+  lunch_start_time?: string;
+  lunchStartTime?: string;
 }
 
 export interface Schedule {
@@ -68,4 +73,5 @@ export type View =
   | "crear-notificacion" // ✅ nueva vista
   | "my-schedule"
   | "convenios"
-  | "convenios-admin";
+  | "convenios-admin"
+  "reports-admin";
