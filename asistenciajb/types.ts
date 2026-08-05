@@ -73,4 +73,5 @@ export type View =
   | "crear-notificacion" // ✅ nueva vista
   | "my-schedule"
   | "convenios"
-  | "convenios-admin";
+  | "convenios-admin"
+  "reports-admin";

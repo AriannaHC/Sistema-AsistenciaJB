@@ -14,6 +14,7 @@ import {
   CalendarDays,
   Gift,
   MessageSquarePlus,
+  FileText,
 } from "lucide-react";
 import { AttendanceRecord, User, View, Schedule } from "./types";
 import Dashboard from "./views/Dashboard";
@@ -27,6 +28,7 @@ import MySchedule from "./views/MySchedule";
 import Convenios from "./views/Convenios";
 import ConveniosAdmin from "./views/ConveniosAdmin";
 import CrearNotificacion from "./views/CrearNotificacion";
+import ReportsAdmin from "./views/ReportsAdmin";
 import {
   authApi,
   attendanceApi,
@@ -43,8 +45,6 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [allSchedules, setAllSchedules] = useState<Schedule[]>([]);
-
-  // ✅ Contador real desde la API — sin hardcodear
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
@@ -58,10 +58,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      if (!authApi.isLoggedIn()) {
-        setLoading(false);
-        return;
-      }
+      if (!authApi.isLoggedIn()) { setLoading(false); return; }
       try {
         const user = await authApi.me();
         setCurrentUser(user);
@@ -77,41 +74,35 @@ const App: React.FC = () => {
   }, []);
 
   const loadData = async (user: User) => {
-    try {
-      const [attendanceData, usersData, schedulesResponse, unreadCount] =
-        await Promise.all([
-          attendanceApi.getAll({ limit: 100 }),
-          user.role === "admin" ? usersApi.getAll() : Promise.resolve([]),
-          schedulesApi.getAll(),
-          // ✅ Cargamos el contador real de notificaciones no leídas
-          notificationsApi.getUnreadCount().catch(() => 0),
-        ]);
+    const [attendanceData, usersData, schedulesResponse, unreadCount] =
+      await Promise.all([
+        attendanceApi.getAll({ limit: 100 }).catch(() => ({ records: [], total: 0, page: 1, limit: 100 })),
+        user.role === "admin" ? usersApi.getAll().catch(() => []) : Promise.resolve([]),
+        schedulesApi.getAll().catch(() => []),
+        notificationsApi.getUnreadCount().catch(() => 0),
+      ]);
 
-      // ✅ Actualizar contador de notificaciones
-      setUnreadNotifications(unreadCount);
+    setUnreadNotifications(unreadCount);
 
-      let schedulesArray: Schedule[] = [];
-      if (Array.isArray(schedulesResponse)) {
-        schedulesArray = schedulesResponse;
-      } else if (schedulesResponse && typeof schedulesResponse === "object") {
-        schedulesArray = [schedulesResponse as Schedule];
-      }
-      setAllSchedules(schedulesArray);
+    let schedulesArray: Schedule[] = [];
+    if (Array.isArray(schedulesResponse)) {
+      schedulesArray = schedulesResponse;
+    } else if (schedulesResponse && typeof schedulesResponse === "object") {
+      schedulesArray = [schedulesResponse as Schedule];
+    }
+    setAllSchedules(schedulesArray);
 
-      setRecords(
-        attendanceData?.records
-          ? attendanceData.records.map(normalizeRecord)
-          : [],
-      );
+    setRecords(
+      (attendanceData as any)?.records
+        ? (attendanceData as any).records.map(normalizeRecord)
+        : [],
+    );
 
-      if (user.role === "admin") {
-        const usersArray = Array.isArray(usersData)
-          ? usersData
-          : (usersData as any)?.data || [];
-        setUsers(usersArray);
-      }
-    } catch (e) {
-      console.error("Error cargando datos:", e);
+    if (user.role === "admin") {
+      const usersArray = Array.isArray(usersData)
+        ? usersData
+        : (usersData as any)?.data || [];
+      setUsers(usersArray);
     }
   };
 
@@ -127,7 +118,6 @@ const App: React.FC = () => {
     lunchStart: r.lunchStart || r.lunch_start || undefined,
     lunchEnd: r.lunchEnd || r.lunch_end || undefined,
     lunchLimit: r.lunchLimit || r.lunch_limit || undefined,
-    // ✅ FIX: mapear lunchStartTime desde el registro de asistencia
     lunchStartTime: r.lunchStartTime || r.lunch_start_time || undefined,
   });
 
@@ -159,9 +149,7 @@ const App: React.FC = () => {
     try {
       const updated = await attendanceApi.checkOut(updatedRecord.id);
       setRecords((prev) =>
-        prev.map((r) =>
-          r.id === updatedRecord.id ? normalizeRecord(updated) : r,
-        ),
+        prev.map((r) => r.id === updatedRecord.id ? normalizeRecord(updated) : r),
       );
     } catch (e: any) {
       alert(e.message);
@@ -179,14 +167,7 @@ const App: React.FC = () => {
   const handleNavigation = (view: View) => {
     setCurrentView(view);
     if (window.innerWidth < 1024) setSidebarOpen(false);
-    if (view === "attendance" && currentUser) {
-      loadData(currentUser);
-    }
-  };
-
-  // ✅ Refresca el contador cuando el usuario entra a notificaciones
-  const handleNotificationsNavigation = () => {
-    handleNavigation("notifications");
+    if (view === "attendance" && currentUser) loadData(currentUser);
   };
 
   if (loading) {
@@ -194,9 +175,7 @@ const App: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-jbBlue border-t-jbOrange rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-jbGray font-bold text-sm uppercase tracking-widest">
-            Cargando sistema JB...
-          </p>
+          <p className="text-jbGray font-bold text-sm uppercase tracking-widest">Cargando sistema JB...</p>
         </div>
       </div>
     );
@@ -204,11 +183,9 @@ const App: React.FC = () => {
 
   if (!currentUser) return <Auth onLogin={handleLogin} />;
 
-  const NavItem: React.FC<{
-    view: View;
-    icon: React.ReactNode;
-    label: string;
-  }> = ({ view, icon, label }) => (
+  const NavItem: React.FC<{ view: View; icon: React.ReactNode; label: string; badge?: number }> = ({
+    view, icon, label, badge,
+  }) => (
     <button
       onClick={() => handleNavigation(view)}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-heading ${
@@ -219,21 +196,27 @@ const App: React.FC = () => {
     >
       {icon}
       <span className="font-semibold text-sm truncate">{label}</span>
-      {currentView === view && <ChevronRight className="ml-auto w-4 h-4" />}
+      {badge !== undefined && badge > 0 && (
+        <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-jbOrange text-[9px] font-black text-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
+      {currentView === view && !badge && <ChevronRight className="ml-auto w-4 h-4" />}
     </button>
   );
 
   const viewTitles: Partial<Record<View, string>> = {
-    dashboard: "PANEL DE CONTROL",
-    attendance: "CONTROL DE ASISTENCIA",
-    history: "HISTORIAL",
-    users: "GESTIÓN DE COLABORADORES",
-    schedules: "GESTIÓN DE HORARIOS",
-    notifications: "NOTIFICACIONES",
+    dashboard:            "PANEL DE CONTROL",
+    attendance:           "CONTROL DE ASISTENCIA",
+    history:              "HISTORIAL",
+    users:                "GESTIÓN DE COLABORADORES",
+    schedules:            "GESTIÓN DE HORARIOS",
+    notifications:        "NOTIFICACIONES",
     "crear-notificacion": "CREAR NOTIFICACIÓN",
-    "my-schedule": "MI HORARIO",
-    convenios: "CONVENIOS Y BENEFICIOS",
-    "convenios-admin": "GESTIONAR CONVENIOS",
+    "my-schedule":        "MI HORARIO",
+    convenios:            "CONVENIOS Y BENEFICIOS",
+    "convenios-admin":    "GESTIONAR CONVENIOS",
+    "reports-admin":      "REPORTES DE COLABORADORES",
   };
 
   return (
@@ -246,17 +229,15 @@ const App: React.FC = () => {
       )}
 
       {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 shadow-sm transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
-      >
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 shadow-sm transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex flex-col h-full">
+
+          {/* Logo */}
           <div className="p-6 text-center border-b border-slate-50 mb-4 relative">
             <h1 className="text-xl font-extrabold text-jbBlue font-heading">
               ASISTENCIA <span className="text-jbOrange">JB</span>
             </h1>
-            <p className="text-[9px] font-black text-jbGray tracking-[0.2em] mt-1">
-              SISTEMA CORPORATIVO
-            </p>
+            <p className="text-[9px] font-black text-jbGray tracking-[0.2em] mt-1">SISTEMA CORPORATIVO</p>
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-slate-100 text-jbGray transition-colors"
@@ -265,68 +246,28 @@ const App: React.FC = () => {
             </button>
           </div>
 
+          {/* Nav */}
           <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
             {currentUser.role === "admin" && (
               <>
-                <NavItem
-                  view="dashboard"
-                  icon={<LayoutDashboard className="w-5 h-5" />}
-                  label="Dashboard"
-                />
-                <NavItem
-                  view="users"
-                  icon={<UsersIcon className="w-5 h-5" />}
-                  label="Gestión Usuarios"
-                />
-                <NavItem
-                  view="schedules"
-                  icon={<Calendar className="w-5 h-5" />}
-                  label="Gestión Horarios"
-                />
-                <NavItem
-                  view="convenios-admin"
-                  icon={<Gift className="w-5 h-5" />}
-                  label="Gestionar Convenios"
-                />
-                {/* ✅ Nueva vista solo admin */}
-                <NavItem
-                  view="crear-notificacion"
-                  icon={<MessageSquarePlus className="w-5 h-5" />}
-                  label="Crear Notificación"
-                />
+                <NavItem view="dashboard"         icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" />
+                <NavItem view="users"             icon={<UsersIcon className="w-5 h-5" />}       label="Gestión Usuarios" />
+                <NavItem view="schedules"         icon={<Calendar className="w-5 h-5" />}        label="Gestión Horarios" />
+                <NavItem view="convenios-admin"   icon={<Gift className="w-5 h-5" />}            label="Gestionar Convenios" />
+                <NavItem view="crear-notificacion" icon={<MessageSquarePlus className="w-5 h-5" />} label="Crear Notificación" />
+                {/* ✅ NUEVO: Sección de reportes solo para admin */}
+                <NavItem view="reports-admin"     icon={<FileText className="w-5 h-5" />}        label="Reportes" />
               </>
             )}
-<<<<<<< HEAD
-            <NavItem view="attendance" icon={<Clock className="w-5 h-5" />} label="Marcar Asistencia" />
-            <NavItem view="history" icon={<History className="w-5 h-5" />} label="Historial" />
-            <NavItem view="my-schedule" icon={<CalendarDays className="w-5 h-5" />} label="Mi Horario" />
-            <NavItem view="convenios" icon={<Gift className="w-5 h-5" />} label="Convenios" />
-=======
 
             {/* Todos los usuarios */}
-            <NavItem
-              view="attendance"
-              icon={<Clock className="w-5 h-5" />}
-              label="Marcar Asistencia"
-            />
-            <NavItem
-              view="history"
-              icon={<History className="w-5 h-5" />}
-              label="Historial"
-            />
-            <NavItem
-              view="my-schedule"
-              icon={<CalendarDays className="w-5 h-5" />}
-              label="Mi Horario"
-            />
-            <NavItem
-              view="convenios"
-              icon={<Gift className="w-5 h-5" />}
-              label="Convenios"
-            />
->>>>>>> origin/main
+            <NavItem view="attendance"  icon={<Clock className="w-5 h-5" />}       label="Marcar Asistencia" />
+            <NavItem view="history"     icon={<History className="w-5 h-5" />}      label="Historial" />
+            <NavItem view="my-schedule" icon={<CalendarDays className="w-5 h-5" />} label="Mi Horario" />
+            <NavItem view="convenios"   icon={<Gift className="w-5 h-5" />}         label="Convenios" />
           </nav>
 
+          {/* Footer sidebar */}
           <div className="p-4 border-t border-slate-100 bg-slate-50/50">
             <button
               onClick={handleLogout}
@@ -341,12 +282,8 @@ const App: React.FC = () => {
                 alt="avatar"
               />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate font-heading">
-                  {currentUser.name}
-                </p>
-                <p className="text-[10px] text-jbGray font-bold uppercase tracking-tight truncate">
-                  {currentUser.area}
-                </p>
+                <p className="text-xs font-bold text-slate-900 truncate font-heading">{currentUser.name}</p>
+                <p className="text-[10px] text-jbGray font-bold uppercase tracking-tight truncate">{currentUser.area}</p>
               </div>
             </div>
           </div>
@@ -354,9 +291,8 @@ const App: React.FC = () => {
       </aside>
 
       {/* Contenido principal */}
-      <main
-        className={`flex-1 min-w-0 transition-all duration-300 ${sidebarOpen ? "lg:ml-64" : "ml-0"}`}
-      >
+      <main className={`flex-1 min-w-0 transition-all duration-300 ${sidebarOpen ? "lg:ml-64" : "ml-0"}`}>
+
         {/* Header */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-slate-200 px-4 md:px-8 h-16 md:h-20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 md:gap-6 min-w-0">
@@ -364,11 +300,7 @@ const App: React.FC = () => {
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="flex-shrink-0 p-2.5 rounded-xl hover:bg-slate-100 text-jbBlue transition-colors"
             >
-              {sidebarOpen ? (
-                <X className="w-5 h-5" />
-              ) : (
-                <Menu className="w-5 h-5" />
-              )}
+              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
             <h2 className="text-sm md:text-lg font-bold text-jbBlue font-heading uppercase tracking-wide truncate">
               {viewTitles[currentView] || ""}
@@ -376,20 +308,16 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 md:gap-6 flex-shrink-0">
-            <div
-              className={`hidden sm:block px-3 md:px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest font-heading shadow-sm ${
-                currentUser.role === "admin"
-                  ? "bg-jbBlue/10 text-jbBlue border border-jbBlue/20"
-                  : "bg-jbOrange/10 text-jbOrange border border-jbOrange/20"
-              }`}
-            >
+            <div className={`hidden sm:block px-3 md:px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest font-heading shadow-sm ${
+              currentUser.role === "admin"
+                ? "bg-jbBlue/10 text-jbBlue border border-jbBlue/20"
+                : "bg-jbOrange/10 text-jbOrange border border-jbOrange/20"
+            }`}>
               {currentUser.role}
             </div>
             <div className="hidden md:block h-8 w-px bg-slate-200" />
-
-            {/* ✅ Campana con contador real */}
             <button
-              onClick={handleNotificationsNavigation}
+              onClick={() => handleNavigation("notifications")}
               className={`relative p-2 rounded-full transition-colors ${
                 currentView === "notifications"
                   ? "bg-jbBlue/10 text-jbBlue"
@@ -403,7 +331,6 @@ const App: React.FC = () => {
                 </span>
               )}
             </button>
-
             <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-slate-100 flex items-center justify-center text-jbBlue border border-slate-200">
               <UserIcon className="w-4 h-4 md:w-5 md:h-5" />
             </div>
@@ -412,9 +339,11 @@ const App: React.FC = () => {
 
         {/* Vistas */}
         <div className="p-4 md:p-6 lg:p-10 max-w-7xl mx-auto">
+
           {currentView === "dashboard" && currentUser.role === "admin" && (
             <Dashboard records={records} user={currentUser} />
           )}
+
           {currentView === "users" && currentUser.role === "admin" && (
             <UsersManagement
               users={users}
@@ -422,6 +351,7 @@ const App: React.FC = () => {
               currentUser={currentUser}
             />
           )}
+
           {currentView === "attendance" && (
             <AttendanceControl
               records={records}
@@ -431,40 +361,50 @@ const App: React.FC = () => {
                   (s) => s.id === currentUser.schedule_id,
                 ) || null
               }
-              // ✅ FIX: pasar lunchStartTime y lunchLimit desde el perfil del usuario
               userLunchStartTime={currentUser.lunchStartTime || (currentUser as any).lunch_start_time || ""}
               userLunchLimit={currentUser.lunchLimit || (currentUser as any).lunch_limit || ""}
               onAdd={addRecord}
               onUpdate={updateRecord}
             />
           )}
+
           {currentView === "history" && (
             <AttendanceHistory records={records} user={currentUser} />
           )}
+
           {currentView === "schedules" && currentUser.role === "admin" && (
             <SchedulesManagement />
           )}
+
           {currentView === "notifications" && (
             <NotificationsView onUnreadChange={setUnreadNotifications} />
           )}
-          {currentView === "my-schedule" && <MySchedule />}
-          {currentView === "convenios" && <Convenios />}
-          {currentView === "convenios-admin" &&
-            currentUser.role === "admin" && <ConveniosAdmin />}
 
-          {/* ✅ Nueva vista — solo admin */}
-          {currentView === "crear-notificacion" &&
-            currentUser.role === "admin" && (
-              <CrearNotificacion
-                onCreated={() => {
-                  // Refresca el contador tras crear una notificación
-                  notificationsApi
-                    .getUnreadCount()
-                    .then(setUnreadNotifications)
-                    .catch(() => {});
-                }}
-              />
-            )}
+          {currentView === "my-schedule" && (
+            <MySchedule user={currentUser} />
+          )}
+
+          {currentView === "convenios" && (
+            <Convenios />
+          )}
+
+          {currentView === "convenios-admin" && currentUser.role === "admin" && (
+            <ConveniosAdmin />
+          )}
+
+          {currentView === "crear-notificacion" && currentUser.role === "admin" && (
+            <CrearNotificacion
+              onCreated={() => {
+                notificationsApi.getUnreadCount().then(setUnreadNotifications).catch(() => {});
+              }}
+            />
+          )}
+
+          {/* ✅ NUEVA VISTA: Reportes de colaboradores (solo admin) */}
+          {currentView === "reports-admin" && currentUser.role === "admin" && (
+            <ReportsAdmin user={currentUser} />
+          )}
+
         </div>
       </main>
     </div>

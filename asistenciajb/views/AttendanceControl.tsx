@@ -1,63 +1,298 @@
 import React, { useState, useEffect, useRef } from "react";
-import { AttendanceRecord, AttendanceStatus, User, Schedule } from "../types";
+import { AttendanceRecord, AttendanceStatus, User, Schedule } from "../types"; // Ajusta la ruta si es necesario
+import { attendanceApi } from "../services/api"; // Ajusta la ruta si es necesario
 import {
-  LogIn, LogOut, CheckCircle2, Clock, Building2, Calendar,
+  LogIn, LogOut, CheckCircle2, Clock, Building2,
   Timer, TrendingUp, AlertCircle, Lock, CalendarDays,
-  UtensilsCrossed, RotateCcw,
+  UtensilsCrossed, RotateCcw, FileText, X, Upload, ImageIcon, Send,
 } from "lucide-react";
-import { attendanceApi } from "../services/api";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost/backend-jb";
 
 interface Props {
   records: AttendanceRecord[];
   user: User;
   schedule: Schedule | null;
-  // ✅ FIX: lunchStartTime y lunchLimit vienen del perfil del usuario (no del registro)
   userLunchStartTime: string;
   userLunchLimit: string;
   onAdd: (record: AttendanceRecord) => void;
   onUpdate: (record: AttendanceRecord) => void;
 }
 
+const CATEGORIAS_REPORTE = [
+  "Falla en mi marcación de asistencia",
+  "No pude marcar mi entrada",
+  "No pude marcar mi salida",
+  "No pude marcar mi almuerzo",
+  "Error en el sistema",
+  "Problema con mi horario asignado",
+  "Ausencia justificada",
+  "Llegada tarde justificada",
+  "Salida anticipada justificada",
+  "Otro",
+];
+
+// ─── MODAL REPORTE ───────────────────────────────────────────
+const ReporteModal: React.FC<{ user: User; onClose: () => void }> = ({ user, onClose }) => {
+  const [categoria, setCategoria]   = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [fotos, setFotos]           = useState<File[]>([]);
+  const [previews, setPreviews]     = useState<string[]>([]);
+  const [enviando, setEnviando]     = useState(false);
+  const [enviado, setEnviado]       = useState(false);
+  const [error, setError]           = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ✅ Generar previews reales base64 con FileReader
+  const agregarFotos = (files: FileList | null) => {
+    if (!files) return;
+    const disponibles = 3 - fotos.length;
+    if (disponibles <= 0) return;
+    const nuevas = Array.from(files).slice(0, disponibles);
+
+    nuevas.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setPreviews(prev => [...prev, e.target!.result as string]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    setFotos(prev => [...prev, ...nuevas]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const eliminarFoto = (idx: number) => {
+    setFotos(prev => prev.filter((_, i) => i !== idx));
+    setPreviews(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleEnviar = async () => {
+    setError("");
+    if (!categoria)                    { setError("Por favor selecciona una categoría."); return; }
+    if (!descripcion.trim())           { setError("Por favor escribe una descripción."); return; }
+    if (descripcion.trim().length < 10){ setError("La descripción debe tener al menos 10 caracteres."); return; }
+
+    setEnviando(true);
+    try {
+      const token = sessionStorage.getItem("jb_token");
+      const formData = new FormData();
+      formData.append("categoria", categoria);
+      formData.append("descripcion", descripcion);
+      fotos.forEach((foto, i) => formData.append(`foto${i + 1}`, foto));
+
+      const res = await fetch(`${API_BASE}/api/employee_reports/`, {
+        method: "POST",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: formData,
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || "Error al enviar.");
+      setEnviado(true);
+    } catch (e: any) {
+      setError(e.message || "Error al enviar el reporte.");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-slate-100 px-7 py-5 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-jbBlue/10 rounded-xl text-jbBlue"><FileText className="w-5 h-5" /></div>
+            <div>
+              <h2 className="text-base font-black text-jbBlue font-heading uppercase tracking-wide">Registrar Reporte</h2>
+              <p className="text-[10px] text-jbGray font-semibold mt-0.5">{user.name} · {user.area}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-7 py-6 space-y-5">
+          {enviado ? (
+            <div className="text-center py-8 space-y-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-8 h-8 text-green-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-jbBlue font-heading">¡Reporte enviado!</h3>
+                <p className="text-sm text-jbGray font-medium mt-1">Tu reporte ha sido registrado. El equipo de RRHH lo revisará pronto.</p>
+              </div>
+              <button onClick={onClose} className="mt-2 px-6 py-3 bg-jbBlue text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-jbNavy transition-all">
+                Cerrar
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Categoría */}
+              <div>
+                <label className="block text-[10px] font-black text-jbGray uppercase tracking-widest mb-2">
+                  Categoría del reporte <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={categoria}
+                  onChange={e => setCategoria(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-semibold text-slate-700 focus:outline-none focus:border-jbBlue focus:bg-white transition-all appearance-none"
+                >
+                  <option value="">— Selecciona una categoría —</option>
+                  {CATEGORIAS_REPORTE.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <label className="block text-[10px] font-black text-jbGray uppercase tracking-widest mb-2">
+                  Descripción <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={descripcion}
+                  onChange={e => setDescripcion(e.target.value)}
+                  placeholder="Describe detalladamente lo que ocurrió..."
+                  rows={4}
+                  maxLength={500}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-sm font-medium text-slate-700 focus:outline-none focus:border-jbBlue focus:bg-white transition-all resize-none"
+                />
+                <p className="text-[10px] text-slate-400 font-semibold text-right mt-1">{descripcion.length}/500</p>
+              </div>
+
+              {/* Fotos */}
+              <div>
+                <label className="block text-[10px] font-black text-jbGray uppercase tracking-widest mb-2">
+                  Evidencia fotográfica
+                  <span className="text-slate-400 font-semibold normal-case ml-1">(opcional · máx. 3 fotos)</span>
+                </label>
+
+                {/* Previews */}
+                {previews.length > 0 && (
+                  <div className="flex gap-3 mb-3 flex-wrap">
+                    {previews.map((src, idx) => (
+                      <div key={idx} className="relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-slate-200 group bg-slate-100">
+                        {/* ✅ src es base64, siempre visible */}
+                        <img
+                          src={src}
+                          alt={`foto ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          onClick={() => eliminarFoto(idx)}
+                          className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        >
+                          <X className="w-5 h-5 text-white" />
+                        </button>
+                        <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                          {idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                    {fotos.length < 3 && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 hover:border-jbBlue flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-jbBlue transition-all"
+                      >
+                        <ImageIcon className="w-5 h-5" />
+                        <span className="text-[9px] font-black uppercase">Agregar</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {fotos.length === 0 && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-3 py-5 rounded-2xl border-2 border-dashed border-slate-200 hover:border-jbBlue text-slate-400 hover:text-jbBlue transition-all font-black text-xs uppercase tracking-wide"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Subir fotos (JPG, PNG · máx. 3)
+                  </button>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={e => agregarFotos(e.target.files)}
+                />
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  <p className="text-xs font-bold text-red-600">{error}</p>
+                </div>
+              )}
+
+              {/* Botones */}
+              <div className="flex gap-3 pt-1">
+                <button onClick={onClose} className="flex-1 py-3.5 rounded-2xl border-2 border-slate-200 text-slate-500 font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleEnviar}
+                  disabled={enviando}
+                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-jbBlue text-white font-black text-xs uppercase tracking-widest hover:bg-jbNavy transition-all shadow-lg shadow-jbBlue/20 disabled:opacity-60"
+                >
+                  {enviando
+                    ? <><Clock className="w-4 h-4 animate-spin" /> Enviando...</>
+                    : <><Send className="w-4 h-4" /> Enviar Reporte</>
+                  }
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// ─── COMPONENTE PRINCIPAL ────────────────────────────────────
 const AttendanceControl: React.FC<Props> = ({
   records, user, schedule,
   userLunchStartTime, userLunchLimit,
   onAdd, onUpdate,
 }) => {
-  const [time, setTime] = useState(new Date());
-  const [active, setActive] = useState<AttendanceRecord | null>(null);
+  const [time, setTime]           = useState(new Date());
+  const [active, setActive]       = useState<AttendanceRecord | null>(null);
   const [workedSeconds, setWorkedSeconds] = useState(0);
+  const [showReporte, setShowReporte]     = useState(false);
 
-  // Estados de almuerzo
-  const [lunchSeconds, setLunchSeconds] = useState(0);
-  const [isOnLunch, setIsOnLunch] = useState(false);
-  const [lunchDone, setLunchDone] = useState(false);
+  const [lunchSeconds, setLunchSeconds]   = useState(0);
+  const [isOnLunch, setIsOnLunch]         = useState(false);
+  const [lunchDone, setLunchDone]         = useState(false);
   const [lunchTardanza, setLunchTardanza] = useState(false);
-  const [lunchResult, setLunchResult] = useState("");
-  const [loadingLunch, setLoadingLunch] = useState(false);
+  const [lunchResult, setLunchResult]     = useState("");
+  const [loadingLunch, setLoadingLunch]   = useState(false);
 
-  const lunchStartRef = useRef<Date | null>(null);
+  const lunchStartRef    = useRef<Date | null>(null);
   const lunchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Reloj
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // ✅ FIX #1: getToday() usando timezone America/Lima para que coincida con el backend
-  const getToday = (): string => {
-    return new Intl.DateTimeFormat("en-CA", {
+  const getToday = (): string =>
+    new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Lima",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
+      year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
-    // en-CA devuelve formato YYYY-MM-DD directamente
-  };
 
   const today = getToday();
 
-  // Timer de almuerzo
   const startLunchTimer = (from: Date) => {
     lunchStartRef.current = from;
     if (lunchIntervalRef.current) clearInterval(lunchIntervalRef.current);
@@ -70,16 +305,20 @@ const AttendanceControl: React.FC<Props> = ({
   };
 
   const stopLunchTimer = () => {
-    if (lunchIntervalRef.current) {
-      clearInterval(lunchIntervalRef.current);
-      lunchIntervalRef.current = null;
-    }
+    if (lunchIntervalRef.current) { clearInterval(lunchIntervalRef.current); lunchIntervalRef.current = null; }
     lunchStartRef.current = null;
   };
 
   useEffect(() => () => stopLunchTimer(), []);
 
-  // Detectar registro activo
+  // Función auxiliar para convertir el límite (ej. "01:00") a segundos
+  const getLimitInSeconds = (limitStr: string) => {
+    if (!limitStr) return 0;
+    const [h, m] = limitStr.split(":").map(Number);
+    return (h * 3600) + ((m || 0) * 60);
+  };
+
+  // ✅ FIX: Evalúa el estado inicial y la tardanza en base a DURACIÓN
   useEffect(() => {
     const found = records.find(r => r.userId === user.id && r.date === today && !r.checkOut);
     setActive(found || null);
@@ -89,11 +328,16 @@ const AttendanceControl: React.FC<Props> = ({
       if (r.lunchStart && r.lunchEnd) {
         setLunchDone(true); setIsOnLunch(false); stopLunchTimer();
         const ms = new Date(r.lunchEnd).getTime() - new Date(r.lunchStart).getTime();
-        setLunchSeconds(Math.floor(ms / 1000));
-        // ✅ FIX #2: usar userLunchLimit (del perfil) si el registro no trae lunchLimit
-        const limitToUse = r.lunchLimit || userLunchLimit;
-        if (limitToUse) {
-          setLunchTardanza(new Date(r.lunchEnd) > new Date(today + "T" + limitToUse + ":00"));
+        const secs = Math.floor(ms / 1000);
+        setLunchSeconds(secs);
+        
+        const limitRaw = (r.lunchLimit || userLunchLimit || "").substring(0, 5);
+        const limitSecs = getLimitInSeconds(limitRaw);
+        
+        if (limitSecs > 0) {
+          const isLate = secs > limitSecs;
+          setLunchTardanza(isLate);
+          setLunchResult(isLate ? "⚠️ Regresaste tarde del almuerzo" : "✅ Regresaste a tiempo");
         }
       } else if (r.lunchStart && !r.lunchEnd) {
         setIsOnLunch(true); setLunchDone(false);
@@ -106,7 +350,6 @@ const AttendanceControl: React.FC<Props> = ({
     }
   }, [records, user.id, today, userLunchLimit]);
 
-  // Cronómetro horas trabajadas
   useEffect(() => {
     if (!active) { setWorkedSeconds(0); return; }
     const update = () => {
@@ -118,7 +361,6 @@ const AttendanceControl: React.FC<Props> = ({
     return () => clearInterval(t);
   }, [active]);
 
-  // Turnos del día
   const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   const diaHoy = DIAS[time.getDay()];
   const registrosHoyConCheckout = records.filter(r => r.userId === user.id && r.date === today && !!r.checkOut);
@@ -126,7 +368,7 @@ const AttendanceControl: React.FC<Props> = ({
   const getTurnosHoy = (): { ingreso: string; salida: string }[] => {
     if (!schedule || schedule.id === "default-schedule-id") return [];
     if (schedule.type === "simple") {
-      if (!["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"].includes(diaHoy)) return [];
+      if (!["Lunes","Martes","Miércoles","Jueves","Viernes"].includes(diaHoy)) return [];
       return [{ ingreso: (schedule.time_in || "").substring(0, 5), salida: (schedule.time_out || "").substring(0, 5) }];
     }
     if (schedule.type === "bloques" && schedule.blocks) {
@@ -137,7 +379,7 @@ const AttendanceControl: React.FC<Props> = ({
     return [];
   };
 
-  const turnosHoy = getTurnosHoy();
+  const turnosHoy  = getTurnosHoy();
   const turnoActual = turnosHoy[registrosHoyConCheckout.length] || null;
 
   const toDateHoy = (hhmm: string): Date => {
@@ -145,19 +387,12 @@ const AttendanceControl: React.FC<Props> = ({
     const d = new Date(); d.setHours(h, m, 0, 0); return d;
   };
 
-  // ✅ FIX #2: lunchStartBlocked usa userLunchStartTime (prop del perfil del usuario)
-  const lunchStartBlocked = (() => {
-    if (!userLunchStartTime) return false;
-    const horaAlmuerzo = toDateHoy(userLunchStartTime);
-    return time < horaAlmuerzo;
-  })();
-
+  const lunchStartBlocked = userLunchStartTime ? time < toDateHoy(userLunchStartTime) : false;
   const lunchStartHoraTexto = userLunchStartTime
     ? toDateHoy(userLunchStartTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
 
-  // Estado botones entrada/salida
-  const calcularEstadoBotones = () => {
+ const calcularEstadoBotones = () => {
     const tieneHorarioReal = schedule && schedule.id !== "default-schedule-id";
 
     if (!tieneHorarioReal) {
@@ -165,20 +400,22 @@ const AttendanceControl: React.FC<Props> = ({
         entradaDeshabilitada: !!active || isOnLunch,
         salidaDeshabilitada: !active || isOnLunch,
         txtEntrada: active
-          ? `Entrada a las ${new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+          ? `Entrada a las ${new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`
           : "Control Flexible JB",
         txtSalida: isOnLunch ? "Regresa del almuerzo primero" : "Control Flexible JB",
         completedToday: false,
       };
     }
 
-    if (active) {
-      const fechaEntrada = active.checkIn.replace(" ", "T").split("T")[0];
+    if (active && active.checkIn) {
+      const fechaEntrada = active.checkIn.replace(" ","T").split("T")[0];
       if (fechaEntrada !== today) {
         return {
-          entradaDeshabilitada: true, salidaDeshabilitada: false,
-          txtEntrada: `Entrada el ${new Date(active.checkIn.replace(" ", "T")).toLocaleDateString("es-ES")}`,
-          txtSalida: "Registrar salida pendiente", completedToday: false,
+          entradaDeshabilitada: false,
+          salidaDeshabilitada: false,
+          txtEntrada: turnoActual ? `Turno de las ${turnoActual.ingreso}` : "Registrar entrada",
+          txtSalida: "Registrar salida pendiente del día anterior",
+          completedToday: false,
         };
       }
     }
@@ -195,17 +432,17 @@ const AttendanceControl: React.FC<Props> = ({
 
     const ahora = time;
     if (!active) {
-      const horaIngreso = toDateHoy(turnoActual.ingreso);
+      const horaIngreso    = toDateHoy(turnoActual.ingreso);
       const limiteApertura = new Date(horaIngreso.getTime() - 5 * 60000);
       if (ahora < limiteApertura) {
         return {
-          entradaDeshabilitada: true, salidaDeshabilitada: true,
-          txtEntrada: `Habilitado a las ${limiteApertura.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+          entradaDeshabilitada: true, salidaDeshabilitada: true, // <-- Corregido: bloqueado porque no ha entrado
+          txtEntrada: `Habilitado a las ${limiteApertura.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`,
           txtSalida: "Fin de Jornada", completedToday: false,
         };
       }
       return {
-        entradaDeshabilitada: false, salidaDeshabilitada: true,
+        entradaDeshabilitada: false, salidaDeshabilitada: true, // <-- Corregido: bloqueado porque no ha entrado
         txtEntrada: `Turno de las ${turnoActual.ingreso}`,
         txtSalida: "Fin de Jornada", completedToday: false,
       };
@@ -214,42 +451,44 @@ const AttendanceControl: React.FC<Props> = ({
     if (isOnLunch) {
       return {
         entradaDeshabilitada: true, salidaDeshabilitada: true,
-        txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+        txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`,
         txtSalida: "Regresa del almuerzo primero", completedToday: false,
       };
     }
 
-    const horaSalida = toDateHoy(turnoActual.salida);
+    const horaSalida  = toDateHoy(turnoActual.salida);
     const limiteSalida = new Date(horaSalida.getTime() - 5 * 60000);
 
     if (ahora >= horaSalida) {
       return {
         entradaDeshabilitada: true, salidaDeshabilitada: false,
-        txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+        txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`,
         txtSalida: `Turno de las ${turnoActual.salida} (vencido)`, completedToday: false,
       };
     }
+
     if (ahora < limiteSalida) {
       return {
-        entradaDeshabilitada: true, salidaDeshabilitada: true,
-        txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-        txtSalida: `Habilitado a las ${limiteSalida.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+        entradaDeshabilitada: true, salidaDeshabilitada: false, // <-- ¡Este es el que queríamos liberar!
+        txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`,
+        txtSalida: `Termina tu turno de las ${turnoActual.salida}`,
         completedToday: false,
       };
     }
+
     return {
-      entradaDeshabilitada: true, salidaDeshabilitada: false,
-      txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      entradaDeshabilitada: true, salidaDeshabilitada: false, // <-- ¡Este es el que queríamos liberar!
+      txtEntrada: `Entrada a las ${new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`,
       txtSalida: `Termina tu turno de las ${turnoActual.salida}`, completedToday: false,
     };
   };
-
+  
   const { entradaDeshabilitada, salidaDeshabilitada, txtEntrada, txtSalida, completedToday } = calcularEstadoBotones();
 
   const mark = (isEntry: boolean) => {
     const now = new Date();
     if (isEntry) {
-      onAdd({ id: "", userId: user.id, userName: user.name, date: today, checkIn: now.toISOString(), status: AttendanceStatus.PRESENT });
+      onAdd({ id:"", userId:user.id, userName:user.name, date:today, checkIn:now.toISOString(), status:AttendanceStatus.PRESENT });
     } else if (active) {
       onUpdate({ ...active, checkOut: now.toISOString() });
     }
@@ -267,29 +506,42 @@ const AttendanceControl: React.FC<Props> = ({
     finally { setLoadingLunch(false); }
   };
 
+  // ✅ FIX: Evalúa la tardanza por DURACIÓN al finalizar
   const handleLunchEnd = async () => {
     setLoadingLunch(true);
     try {
       const result = await attendanceApi.lunchEnd();
       stopLunchTimer();
-      setIsOnLunch(false); setLunchDone(true); setLunchTardanza(result.tardanza);
-      setLunchResult(result.tardanza ? "⚠️ Regresaste tarde del almuerzo" : "✅ Regresaste a tiempo");
+      setIsOnLunch(false); setLunchDone(true);
+      
       const ls = result.lunchStart || result.lunch_start;
       const le = result.lunchEnd || result.lunch_end;
-      if (ls && le) setLunchSeconds(Math.floor((new Date(le).getTime() - new Date(ls).getTime()) / 1000));
+      const limitRaw = (result.lunchLimit || result.lunch_limit || userLunchLimit || "").substring(0, 5);
+      
+      let esTardanza = false;
+      
+      if (ls && le) {
+        const ms = new Date(le).getTime() - new Date(ls).getTime();
+        const secs = Math.floor(ms / 1000);
+        setLunchSeconds(secs);
+
+        const limitSecs = getLimitInSeconds(limitRaw);
+        if (limitSecs > 0) {
+          esTardanza = secs > limitSecs;
+        }
+      }
+      
+      setLunchTardanza(esTardanza);
+      setLunchResult(esTardanza ? "⚠️ Regresaste tarde del almuerzo" : "✅ Regresaste a tiempo");
+      
     } catch (e: any) { alert(e.message); }
     finally { setLoadingLunch(false); }
   };
 
   const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
   };
-
-  const recentRecords = records
-    .filter(r => r.userId === user.id && r.date !== today && r.checkOut)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5);
 
   const getGreeting = () => {
     const h = time.getHours();
@@ -298,22 +550,15 @@ const AttendanceControl: React.FC<Props> = ({
     return "Buenas noches";
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Tardanza": return "bg-jbOrange/10 text-jbOrange border-jbOrange/20";
-      case "Falta": return "bg-jbRed/10 text-jbRed border-jbRed/20";
-      default: return "bg-jbTurquoise/10 text-jbTurquoise border-jbTurquoise/20";
-    }
-  };
-
-  const firstName = user.name.split(" ")[0];
-  const isTardanza = active?.status === "Tardanza";
+  const firstName      = user.name.split(" ")[0];
+  const isTardanza     = active?.status === "Tardanza";
   const tieneHorarioReal = schedule && schedule.id !== "default-schedule-id";
-  // ✅ FIX #2: usar userLunchLimit (prop del perfil) para mostrar el límite en el cronómetro
-  const activeLunchLimit = userLunchLimit || (active as any)?.lunchLimit || (active as any)?.lunch_limit;
+  const activeLunchLimit = (userLunchLimit || (active as any)?.lunchLimit || (active as any)?.lunch_limit || "").substring(0, 5);
 
   return (
     <div className="max-w-4xl mx-auto py-8 space-y-6 animate-in slide-in-from-bottom-10 duration-700">
+
+      {showReporte && <ReporteModal user={user} onClose={() => setShowReporte(false)} />}
 
       {/* Saludo */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden flex items-center justify-between flex-wrap gap-4">
@@ -331,10 +576,10 @@ const AttendanceControl: React.FC<Props> = ({
         </div>
         <div className="text-right pr-2">
           <p className="text-jbGray text-[10px] font-black uppercase tracking-widest">
-            {time.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+            {time.toLocaleDateString("es-ES", { weekday:"long", day:"numeric", month:"long" })}
           </p>
           <p className="text-xl font-black font-heading text-jbBlue tabular-nums mt-0.5">
-            {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {time.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}
           </p>
         </div>
       </div>
@@ -373,25 +618,21 @@ const AttendanceControl: React.FC<Props> = ({
         <div className={`h-1 ${active && isTardanza ? "bg-jbOrange" : active ? "bg-jbTurquoise" : "bg-slate-200"}`} />
         <div className="p-10 text-center">
           <h2 className="text-7xl font-black text-jbBlue tabular-nums tracking-tighter font-heading">
-            {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            {time.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" })}
           </h2>
 
-          {/* Cronómetro almuerzo */}
           {isOnLunch && (
             <div className="mt-4 inline-flex items-center gap-3 bg-jbOrange/10 border border-jbOrange/20 px-6 py-3 rounded-2xl">
               <Clock className="w-5 h-5 text-jbOrange animate-pulse" />
               <span className="font-black text-jbOrange text-2xl tabular-nums font-heading">{formatTime(lunchSeconds)}</span>
               <span className="text-jbOrange font-black text-xs uppercase tracking-widest">ALMUERZO EN CURSO</span>
               {activeLunchLimit && (
-                <span className="text-jbOrange/60 font-bold text-xs border-l border-jbOrange/20 pl-3">
-                  límite: {activeLunchLimit}
-                </span>
+                <span className="text-jbOrange/60 font-bold text-xs border-l border-jbOrange/20 pl-3">límite: {activeLunchLimit}</span>
               )}
             </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-10">
-            {/* Botón Entrada */}
             <button disabled={entradaDeshabilitada} onClick={() => mark(true)}
               className={`flex items-center gap-5 p-6 rounded-2xl transition-all duration-200 text-left ${
                 entradaDeshabilitada
@@ -407,7 +648,6 @@ const AttendanceControl: React.FC<Props> = ({
               </div>
             </button>
 
-            {/* Botón Salida */}
             <button disabled={salidaDeshabilitada} onClick={() => mark(false)}
               className={`flex items-center gap-5 p-6 rounded-2xl transition-all duration-200 text-left ${
                 salidaDeshabilitada
@@ -424,48 +664,35 @@ const AttendanceControl: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Sección Almuerzo */}
+          {/* Almuerzo */}
           {active && !completedToday && (
             <div className="mt-5">
               {!isOnLunch && !lunchDone && (
-                <button
-                  onClick={handleLunchStart}
-                  disabled={loadingLunch || lunchStartBlocked}
+                <button onClick={handleLunchStart} disabled={loadingLunch || lunchStartBlocked}
                   className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-black text-sm transition-all border disabled:opacity-60 ${
                     lunchStartBlocked
                       ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                       : "bg-slate-100 hover:bg-slate-200 text-jbBlue border-slate-200"
                   }`}>
-                  {loadingLunch
-                    ? <><Clock className="w-4 h-4 animate-spin" /> REGISTRANDO...</>
-                    : lunchStartBlocked
-                      ? <><Lock className="w-4 h-4" /> ALMUERZO DISPONIBLE A LAS {lunchStartHoraTexto}</>
-                      : <><UtensilsCrossed className="w-4 h-4" /> INICIAR ALMUERZO {userLunchStartTime ? `(desde ${userLunchStartTime})` : ""}</>
-                  }
+                  {loadingLunch ? <><Clock className="w-4 h-4 animate-spin" /> REGISTRANDO...</>
+                    : lunchStartBlocked ? <><Lock className="w-4 h-4" /> ALMUERZO DISPONIBLE A LAS {lunchStartHoraTexto}</>
+                    : <><UtensilsCrossed className="w-4 h-4" /> INICIAR ALMUERZO {userLunchStartTime ? `(desde ${userLunchStartTime})` : ""}</>}
                 </button>
               )}
-
               {isOnLunch && (
-                <button
-                  onClick={handleLunchEnd}
-                  disabled={loadingLunch}
+                <button onClick={handleLunchEnd} disabled={loadingLunch}
                   className="w-full flex items-center justify-center gap-3 p-5 rounded-2xl bg-jbOrange text-white font-black text-sm transition-all shadow-lg shadow-jbOrange/20 hover:bg-orange-600 disabled:opacity-60">
-                  {loadingLunch
-                    ? <><Clock className="w-4 h-4 animate-spin" /> REGISTRANDO...</>
-                    : <><RotateCcw className="w-4 h-4" /> VOLVER DEL ALMUERZO — FINALIZAR DESCANSO</>
-                  }
+                  {loadingLunch ? <><Clock className="w-4 h-4 animate-spin" /> REGISTRANDO...</>
+                    : <><RotateCcw className="w-4 h-4" /> VOLVER DEL ALMUERZO — FINALIZAR DESCANSO</>}
                 </button>
               )}
-
               {lunchDone && (
                 <div className={`flex items-center justify-center gap-3 p-4 rounded-2xl font-black text-sm border ${
                   lunchTardanza ? "bg-red-50 text-red-500 border-red-200" : "bg-green-50 text-green-600 border-green-200"
                 }`}>
                   <span>{lunchResult}</span>
                   <span className="font-mono text-lg tabular-nums">{formatTime(lunchSeconds)}</span>
-                  {lunchTardanza && (
-                    <span className="text-[10px] uppercase tracking-widest bg-red-100 px-2 py-1 rounded-full">TARDANZA</span>
-                  )}
+                  {lunchTardanza && <span className="text-[10px] uppercase tracking-widest bg-red-100 px-2 py-1 rounded-full">TARDANZA</span>}
                 </div>
               )}
             </div>
@@ -480,7 +707,7 @@ const AttendanceControl: React.FC<Props> = ({
             }`}>
               {isOnLunch ? <UtensilsCrossed className="w-4 h-4" /> : isTardanza ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
               {isOnLunch ? "EN ALMUERZO" : isTardanza ? "ENTRADA CON TARDANZA" : "JORNADA ACTIVA"} —{" "}
-              {new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              {new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
             </div>
           )}
 
@@ -502,17 +729,15 @@ const AttendanceControl: React.FC<Props> = ({
             {isOnLunch && <p className="text-[9px] text-jbOrange font-black uppercase">(PAUSA)</p>}
           </div>
         </div>
-
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4">
           <div className="p-3 bg-slate-100 rounded-xl text-slate-500"><Clock className="w-5 h-5" /></div>
           <div>
             <p className="text-[10px] font-black text-jbGray uppercase tracking-widest">Hora de entrada</p>
             <p className="text-lg font-black text-jbBlue font-heading">
-              {active ? new Date(active.checkIn.replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+              {active ? new Date(active.checkIn.replace(" ","T")).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—"}
             </p>
           </div>
         </div>
-
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4">
           <div className={`p-3 rounded-xl ${lunchDone ? lunchTardanza ? "bg-red-100 text-red-500" : "bg-green-100 text-green-600" : isOnLunch ? "bg-jbOrange/10 text-jbOrange" : "bg-slate-100 text-slate-400"}`}>
             <UtensilsCrossed className="w-5 h-5" />
@@ -522,15 +747,10 @@ const AttendanceControl: React.FC<Props> = ({
             <p className={`text-sm font-black font-heading tabular-nums ${lunchDone ? lunchTardanza ? "text-red-500" : "text-green-600" : isOnLunch ? "text-jbOrange" : "text-slate-400"}`}>
               {(lunchDone || isOnLunch) ? formatTime(lunchSeconds) : "—"}
             </p>
-            {lunchDone && (
-              <p className={`text-[9px] font-black uppercase ${lunchTardanza ? "text-red-400" : "text-green-500"}`}>
-                {lunchTardanza ? "⚠️ TARDANZA" : "✅ A TIEMPO"}
-              </p>
-            )}
+            {lunchDone && <p className={`text-[9px] font-black uppercase ${lunchTardanza ? "text-red-400" : "text-green-500"}`}>{lunchTardanza ? "⚠️ TARDANZA" : "✅ A TIEMPO"}</p>}
             {isOnLunch && <p className="text-[9px] text-jbOrange font-black uppercase animate-pulse">EN CURSO</p>}
           </div>
         </div>
-
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4">
           <div className={`p-3 rounded-xl ${isOnLunch ? "bg-jbOrange/10 text-jbOrange" : active ? isTardanza ? "bg-jbOrange/10 text-jbOrange" : "bg-jbTurquoise/10 text-jbTurquoise" : "bg-slate-100 text-slate-400"}`}>
             <TrendingUp className="w-5 h-5" />
@@ -544,69 +764,26 @@ const AttendanceControl: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Historial rápido */}
-      {recentRecords.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-7">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 bg-jbBlue/10 rounded-xl text-jbBlue"><Calendar className="w-4 h-4" /></div>
+      {/* Botón Registrar Reporte */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-7">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-jbBlue/10 rounded-xl text-jbBlue"><FileText className="w-4 h-4" /></div>
             <div>
-              <h3 className="text-sm font-black text-jbBlue font-heading uppercase tracking-wide">Mis últimos registros</h3>
-              <p className="text-[10px] text-jbGray font-semibold">Historial reciente de asistencia</p>
+              <h3 className="text-sm font-black text-jbBlue font-heading uppercase tracking-wide">¿Tuviste un problema con tu asistencia?</h3>
+              <p className="text-[10px] text-jbGray font-semibold mt-0.5">Registra un reporte y el equipo de RRHH lo revisará.</p>
             </div>
           </div>
-          <div className="space-y-2.5">
-            {recentRecords.map(r => {
-              const checkInTime = new Date(r.checkIn);
-              const checkOutTime = r.checkOut ? new Date(r.checkOut) : null;
-              const diffMs = checkOutTime ? checkOutTime.getTime() - checkInTime.getTime() : 0;
-              const diffH = Math.floor(diffMs / 3600000), diffM = Math.floor((diffMs % 3600000) / 60000);
-              const rAny = r as any;
-              const tieneAlmuerzo = rAny.lunchStart && rAny.lunchEnd;
-              const limitAlmuerzo = rAny.lunchLimit || userLunchLimit;
-              const almTardanza = tieneAlmuerzo && limitAlmuerzo
-                ? new Date(rAny.lunchEnd) > new Date(r.date + "T" + limitAlmuerzo + ":00")
-                : false;
-
-              return (
-                <div key={r.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-jbBlue/20 transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
-                    <p className="text-sm font-bold text-slate-700 uppercase">
-                      {new Date(r.date + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4 flex-wrap justify-end">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-[9px] text-jbGray font-black uppercase tracking-widest">Entrada</p>
-                      <p className="text-sm font-black text-jbBlue font-heading">{checkInTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
-                    </div>
-                    <div className="text-right hidden sm:block">
-                      <p className="text-[9px] text-jbGray font-black uppercase tracking-widest">Salida</p>
-                      <p className="text-sm font-black text-jbBlue font-heading">{checkOutTime ? checkOutTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</p>
-                    </div>
-                    {tieneAlmuerzo && (
-                      <div className="text-right">
-                        <p className="text-[9px] text-jbGray font-black uppercase tracking-widest">Almuerzo</p>
-                        <p className={`text-xs font-black ${almTardanza ? "text-red-500" : "text-green-600"}`}>
-                          {new Date(rAny.lunchStart).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {" → "}
-                          {new Date(rAny.lunchEnd).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {almTardanza ? " ⚠️" : " ✅"}
-                        </p>
-                      </div>
-                    )}
-                    <div className="text-right">
-                      <p className="text-[9px] text-jbGray font-black uppercase tracking-widest">Duración</p>
-                      <p className="text-sm font-black text-slate-600 font-heading">{diffH > 0 ? `${diffH}h ${diffM}m` : diffM > 0 ? `${diffM}m` : "—"}</p>
-                    </div>
-                    <span className={`px-3 py-1.5 text-[9px] font-black uppercase rounded-lg border font-heading ${getStatusColor(r.status)}`}>{r.status}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <button
+            onClick={() => setShowReporte(true)}
+            className="flex items-center gap-2 bg-jbBlue text-white px-6 py-3 rounded-xl font-black text-[10px] tracking-widest uppercase hover:bg-jbNavy transition-all shadow-lg shadow-jbBlue/20"
+          >
+            <FileText className="w-4 h-4" />
+            REGISTRAR REPORTE
+          </button>
         </div>
-      )}
+      </div>
+
     </div>
   );
 };

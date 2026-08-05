@@ -22,6 +22,7 @@ const AREAS = [
   "CONTABILIDAD Y FINANZAS",
   "PLANEAMIENTO ESTRATÉGICO",
   "BIENESTAR Y CULTURA HUMANA",
+  "OPERACIONES",
 ];
 
 const Dashboard: React.FC<DashboardProps> = ({ user }) => {
