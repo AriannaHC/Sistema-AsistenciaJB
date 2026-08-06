@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { CalendarDays, Loader2, Info, Download } from "lucide-react";
 import { Schedule, User } from "../types";
-import { schedulesApi } from "../services/api";
+import { authApi, schedulesApi } from "../services/api";
 import ScheduleCalendar from "../components/ScheduleCalendar";
 
 interface Props {
@@ -54,28 +54,29 @@ const MySchedule: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     const fetchMySchedule = async () => {
+      setLoading(true);
       try {
-        const data = await schedulesApi.getAll();
-        if (Array.isArray(data)) {
-          // ✅ CORRECCIÓN: buscar el horario que coincide con el schedule_id del usuario
-          const scheduleId = (user as any)?.schedule_id;
-          if (scheduleId && scheduleId !== "default-schedule-id") {
-            const found = data.find((s: Schedule) => s.id === scheduleId);
-            setSchedule(found || data[0] || null);
-          } else {
-            setSchedule(data[0] || null);
-          }
+        // Siempre obtener datos frescos del servidor para evitar props desactualizados
+        const freshUser = await authApi.me();
+        const scheduleId = freshUser?.schedule_id;
+
+        if (scheduleId && scheduleId !== "default-schedule-id") {
+          // Búsqueda directa por ID: no depende del orden del array
+          const found = await schedulesApi.getById(scheduleId);
+          setSchedule(found || null);
         } else {
-          setSchedule(data as Schedule);
+          // Usuario sin horario asignado
+          setSchedule(null);
         }
       } catch (err) {
-        console.error(err);
+        console.error("Error cargando horario:", err);
+        setSchedule(null);
       } finally {
         setLoading(false);
       }
     };
     fetchMySchedule();
-  }, [user?.schedule_id]); // ✅ Re-ejecutar cuando cambie el schedule_id del usuario
+  }, [user?.id]); // Re-ejecutar solo si cambia el usuario (nueva sesión)
 
   const handleDownloadPDF = () => {
     if (!schedule) return;
