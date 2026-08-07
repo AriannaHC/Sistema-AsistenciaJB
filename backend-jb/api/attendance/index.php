@@ -8,6 +8,20 @@ require_once __DIR__ . '/../../middleware/auth.php';
 
 error_reporting(E_ERROR | E_PARSE);
 
+// Captura cualquier error fatal y devuelve JSON valido
+set_exception_handler(function($e) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Error interno: ' . $e->getMessage(), 'data' => null]);
+    exit;
+});
+register_shutdown_function(function() {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Error fatal del servidor.', 'data' => null]);
+    }
+});
+
 setCorsHeaders();
 setSecurityHeaders();
 
@@ -50,7 +64,17 @@ if ($method === 'POST' && $action === 'checkin') {
         if ($jornadaActiva['date'] === $today) {
             respondError('Ya tienes una jornada activa hoy. Primero registra tu salida.');
         } else {
-            respondError('Tienes una jornada sin cerrar del ' . $jornadaActiva['date'] . '. Primero registra tu salida pendiente.');
+            // Jornada sin cerrar de dia anterior: se cierra automaticamente
+            $fechaAnterior = $jornadaActiva['date'];
+            $checkOutAuto  = $fechaAnterior . ' 23:59:59';
+            try {
+                $stmtClose = $db->prepare(
+                    "UPDATE attendance_records SET check_out = ? WHERE id = ? AND check_out IS NULL"
+                );
+                $stmtClose->execute([$checkOutAuto, $jornadaActiva['id']]);
+            } catch (Exception $e) {
+                // Si falla el cierre automatico, continuamos de todas formas
+            }
         }
     }
 

@@ -4,7 +4,9 @@
 
 import { Schedule, Notification } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost/backend-jb";
+export const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  "https://asistencia.consultoradeasesoriaempresarialjb.com/backend-jb";
 
 let _token: string | null = sessionStorage.getItem("jb_token");
 
@@ -204,9 +206,9 @@ export const reportsApi = {
     const params = new URLSearchParams({
       action: "export",
       ...(dateFrom ? { dateFrom } : {}),
-      ...(dateTo   ? { dateTo }   : {}),
-      ...(area     ? { area }     : {}),
-      ...(search   ? { search }   : {}),
+      ...(dateTo ? { dateTo } : {}),
+      ...(area ? { area } : {}),
+      ...(search ? { search } : {}),
     });
     const res = await fetch(`${API_BASE}/api/reports/?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },

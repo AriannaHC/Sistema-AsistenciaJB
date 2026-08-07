@@ -21,7 +21,7 @@ import {
   Send,
 } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost/backend-jb";
+import { API_BASE } from "../services/api";
 
 interface Props {
   records: AttendanceRecord[];
